@@ -4,10 +4,15 @@
   <img src="assets/icon.png" alt="FormatPad" width="256" height="256">
 </p>
 
-A fast, multi-format viewer and editor for Windows and macOS. Open Markdown,
-JSON, YAML, CSV/TSV, TOML, XML, HTML, Mermaid, INI/conf, .env, log, and plain
-text in one app — every format gets a dedicated viewer and toolbar, and every
-viewer is editable.
+A fast, multi-format viewer and editor for Windows, macOS, and the web.
+Open Markdown, JSON, YAML, CSV/TSV, TOML, XML, HTML, Mermaid, INI/conf, .env,
+log, and plain text in one app — every format gets a dedicated viewer and
+toolbar, and every viewer is editable.
+
+**Try it in your browser:** [luke-youngmin-cho.github.io/FormatPad](https://luke-youngmin-cho.github.io/FormatPad/)
+— zero install. Chromium-based browsers (Chrome, Edge, Arc, Opera) get the
+full workspace via the File System Access API; Firefox and Safari support
+single-file open/save.
 
 ## Why FormatPad?
 
@@ -103,7 +108,26 @@ All local. No cloud, no subscription, no account.
 
 ## Install
 
-Grab the installer for your platform from the [latest release](../../releases/latest).
+### Web
+
+No install needed — open
+[luke-youngmin-cho.github.io/FormatPad](https://luke-youngmin-cho.github.io/FormatPad/).
+
+Chromium-based browsers (Chrome, Edge, Arc, Opera) get everything the
+desktop app offers except OS integration: folder browsing, cross-file
+search, wiki-link backlinks, and read-write file access, all through the
+[File System Access API](https://developer.mozilla.org/docs/Web/API/File_System_API).
+Firefox and Safari work for single-file open and Save As via a download;
+Open Folder surfaces a clear "needs Chromium" message rather than
+silently failing.
+
+### Desktop
+
+Grab the installer for your platform from the
+[latest release](../../releases/latest). The desktop build adds
+OS-default-app registration for 20+ extensions, a file watcher that
+refreshes the tree on external changes, an auto-save recovery on
+restart, and the in-app auto-updater.
 
 ### Windows
 
@@ -142,6 +166,10 @@ npm start
 # Build desktop installer for the current platform
 npm run dist:win    # Windows NSIS installer (.exe)
 npm run dist:mac    # macOS universal DMG (must be run on macOS)
+
+# Build the web app into docs/ (GitHub Pages target)
+npm run build:web       # dev bundle
+npm run build:web:min   # minified bundle for deploy
 ```
 
 ## Tech stack
