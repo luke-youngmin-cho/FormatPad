@@ -1,0 +1,135 @@
+appId: com.formatpad.app
+productName: FormatPad
+directories:
+  output: release
+  buildResources: assets
+files:
+  - src/main/**/*
+  - src/renderer/**/*
+  - src/locales/**/*
+  - dist/**/*
+  - package.json
+extraMetadata:
+  main: src/main/main.js
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+  category: public.app-category.developer-tools
+  icon: assets/icon.icns
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+  darkModeSupport: true
+dmg:
+  sign: false
+  writeUpdateInfo: false
+nsis:
+  oneClick: false
+  createDesktopShortcut: true
+  perMachine: true
+  allowElevation: true
+  multiLanguageInstaller: true
+  displayLanguageSelector: true
+  installerLanguages:
+    - en_US
+    - ko_KR
+    - zh_CN
+    - zh_TW
+    - ja_JP
+    - es_ES
+    - fr_FR
+    - de_DE
+    - pt_BR
+    - ru_RU
+    - ar_SA
+    - it_IT
+    - nl_NL
+    - pl_PL
+    - tr_TR
+    - vi_VN
+    - th_TH
+    - sv_SE
+    - da_DK
+    - fi_FI
+    - nb_NO
+    - cs_CZ
+    - el_GR
+    - hu_HU
+    - ro_RO
+    - uk_UA
+    - id_ID
+    - ms_MY
+    - he_IL
+    - hi_IN
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+protocols:
+  - name: FormatPad Protocol
+    schemes:
+      - formatpad
+fileAssociations:
+  - ext: md
+    name: Markdown File
+    description: Markdown Document
+  - ext: markdown
+    name: Markdown File
+    description: Markdown Document
+  - ext: mdx
+    name: MDX File
+    description: MDX Document
+  - ext: mmd
+    name: Mermaid Diagram
+    description: Mermaid Diagram
+  - ext: json
+    name: JSON File
+    description: JSON Document
+  - ext: yaml
+    name: YAML File
+    description: YAML Document
+  - ext: yml
+    name: YAML File
+    description: YAML Document
+  - ext: toml
+    name: TOML File
+    description: TOML Document
+  - ext: xml
+    name: XML File
+    description: XML Document
+  - ext: csv
+    name: CSV File
+    description: CSV Document
+  - ext: tsv
+    name: TSV File
+    description: TSV Document
+  - ext: html
+    name: HTML File
+    description: HTML Document
+  - ext: htm
+    name: HTML File
+    description: HTML Document
+  - ext: env
+    name: Env File
+    description: Environment File
+  - ext: ini
+    name: INI File
+    description: INI Configuration File
+  - ext: conf
+    name: Conf File
+    description: Configuration File
+  - ext: properties
+    name: Properties File
+    description: Java Properties File
+  - ext: log
+    name: Log File
+    description: Log File
+  - ext: txt
+    name: Text File
+    description: Plain Text Document

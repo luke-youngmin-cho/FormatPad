@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https:; font-src 'self' data:;">
+  <link rel="stylesheet" href="styles/katex.min.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <title>FormatPad</title>
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button id="btn-files" title="Toggle Files (Ctrl+Shift+E)" data-i18n-title="tooltip.files">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M.513 1.513A1.75 1.75 0 0 1 1.75 1h3.5c.464 0 .909.184 1.237.513l1.414 1.414a.25.25 0 0 0 .177.073h5.672A1.75 1.75 0 0 1 15.5 4.75v7.5A1.75 1.75 0 0 1 13.75 14H1.75A1.75 1.75 0 0 1 0 12.25V2.75c0-.464.184-.909.513-1.237Z"/></svg>
+    </button>
+    <button id="btn-toc" title="Toggle TOC (Ctrl+T)" data-i18n-title="tooltip.toc">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M2 4a1 1 0 100-2 1 1 0 000 2zm3.75-1.5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zM3 8a1 1 0 11-2 0 1 1 0 012 0zm-1 6a1 1 0 100-2 1 1 0 000 2z"/>
+      </svg>
+    </button>
+    <div class="toolbar-sep"></div>
+    <button id="btn-new" title="New File (Ctrl+N)" data-i18n-title="tooltip.new">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"/>
+      </svg>
+    </button>
+    <button id="btn-open" title="Open File (Ctrl+O)" data-i18n-title="tooltip.open">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h3.879a1.5 1.5 0 0 1 1.06.44l1.122 1.12A1.5 1.5 0 0 0 9.62 4H13.5A1.5 1.5 0 0 1 15 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zM2.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.5-.5H9.62a2.5 2.5 0 0 1-1.768-.732L6.732 3.146A.5.5 0 0 0 6.38 3H2.5z"/>
+      </svg>
+    </button>
+    <button id="btn-save" title="Save (Ctrl+S)" data-i18n-title="tooltip.save">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M.5 1.75A.75.75 0 0 1 1.25 1h8.69c.199 0 .39.079.53.22l3.78 3.78c.141.14.22.331.22.53v8.72a.75.75 0 0 1-.75.75H1.25a.75.75 0 0 1-.75-.75V1.75Zm1.5.75v11h12V5.81L10.94 2.5H7v3.25a.75.75 0 0 1-.75.75h-3.5a.75.75 0 0 1-.75-.75V2.5Zm1.5 0v2.5h2v-2.5ZM8 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/>
+      </svg>
+    </button>
+
+    <div class="toolbar-sep"></div>
+    <span id="file-info"></span>
+
+    <!-- View mode toggle -->
+    <div id="view-modes">
+      <button id="btn-editor" title="Editor Only" class="view-btn" data-i18n-title="tooltip.editorOnly">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4.708 5.578L2.061 8.224l2.647 2.646-.708.708L.94 8.518a.5.5 0 0 1 0-.708L4 4.87l.708.708zm6.584 0l2.647 2.646-2.647 2.646.708.708L15.06 8.518a.5.5 0 0 0 0-.708L12 4.87l-.708.708zM6.932 13.5l2.5-11 .968.22-2.5 11-.968-.22z"/>
+        </svg>
+      </button>
+      <button id="btn-split" title="Split View" class="view-btn active" data-i18n-title="tooltip.splitView">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.784.784 1 1.75 1ZM1.5 2.75v10.5c0 .138.112.25.25.25H7.5v-11H1.75a.25.25 0 0 0-.25.25ZM9 2.5v11h5.25a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25Z"/>
+        </svg>
+      </button>
+      <button id="btn-preview" title="Preview Only" class="view-btn" data-i18n-title="tooltip.previewOnly">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.831.88 9.577.43 8.899a1.62 1.62 0 0 1 0-1.798c.45-.678 1.367-1.932 2.637-3.023C4.33 2.992 6.019 2 8 2ZM1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5c1.473 0 2.825-.742 3.955-1.715 1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5c-1.473 0-2.824.742-3.955 1.715-1.124.967-1.954 2.096-2.366 2.717ZM8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10Z"/>
+        </svg>
+      </button>
+    </div>
+
+    <select id="lang-select"></select>
+    <button id="btn-theme" title="Theme" data-i18n-title="tooltip.theme">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12" r="0.5" fill="currentColor"/>
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.04-.24-.3-.39-.65-.39-1.04 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-4.97-4.03-9-10-9z"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Format bar -->
+  <div id="format-bar" hidden>
+    <div class="fmt-group" data-view="markdown">
+    <button id="fmt-bold" title="Bold (Ctrl+B)" data-i18n-title="tooltip.bold"><b>B</b></button>
+    <button id="fmt-italic" title="Italic (Ctrl+I)" data-i18n-title="tooltip.italic"><i>I</i></button>
+    <button id="fmt-strike" title="Strikethrough" data-i18n-title="tooltip.strike"><s>S</s></button>
+    <button id="fmt-highlight" title="Highlight" data-i18n-title="tooltip.highlight"><span class="fmt-highlight-icon">H</span></button>
+    <button id="fmt-code" title="Inline Code" data-i18n-title="tooltip.inlineCode"><span class="fmt-mono">&lt;/&gt;</span></button>
+    <div class="fmt-sep"></div>
+    <!-- Heading dropdown -->
+    <div id="heading-wrap" class="fmt-dropdown-wrap">
+      <button id="fmt-heading" title="Heading" data-i18n-title="tooltip.heading"><span class="fmt-mono">H</span><span class="fmt-dropdown-arrow">&#9662;</span></button>
+      <div id="heading-menu" class="fmt-dropdown hidden">
+        <button data-level="1">Heading 1 <span class="fmt-shortcut">#</span></button>
+        <button data-level="2">Heading 2 <span class="fmt-shortcut">##</span></button>
+        <button data-level="3">Heading 3 <span class="fmt-shortcut">###</span></button>
+        <button data-level="4">Heading 4 <span class="fmt-shortcut">####</span></button>
+        <button data-level="5">Heading 5 <span class="fmt-shortcut">#####</span></button>
+        <button data-level="6">Heading 6 <span class="fmt-shortcut">######</span></button>
+      </div>
+    </div>
+    <div class="fmt-sep"></div>
+    <button id="fmt-link" title="Link (Ctrl+K)" data-i18n-title="tooltip.link">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 3.22a.75.75 0 0 1 0 1.06L6.53 5.53a2.5 2.5 0 0 0 3.54 3.54l1.25-1.25a.75.75 0 1 1 1.06 1.06l-1.25 1.25a4 4 0 0 1-5.66-5.66l1.25-1.25a.75.75 0 0 1 1.06 0Zm4.44-1.94a4 4 0 0 1 0 5.66l-1.25 1.25a.75.75 0 0 1-1.06-1.06l1.25-1.25a2.5 2.5 0 0 0-3.54-3.54L6.37 4.59a.75.75 0 0 1-1.06-1.06l1.25-1.25a4 4 0 0 1 5.66 0Z"/></svg>
+    </button>
+    <button id="fmt-image" title="Image" data-i18n-title="tooltip.image">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M16 13.25A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75ZM1.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h.94l3.733-4.667a.75.75 0 0 1 1.154 0L10.44 12.5h3.81a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM5 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
+    </button>
+    <div class="fmt-sep"></div>
+    <button id="fmt-ul" title="Bullet List" data-i18n-title="tooltip.ul">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm3.75-1.5a.75.75 0 0 0 0 1.5h8.5a.75.75 0 0 0 0-1.5Zm0 5a.75.75 0 0 0 0 1.5h8.5a.75.75 0 0 0 0-1.5Zm0 5a.75.75 0 0 0 0 1.5h8.5a.75.75 0 0 0 0-1.5ZM3 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm-1 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/></svg>
+    </button>
+    <button id="fmt-ol" title="Numbered List" data-i18n-title="tooltip.ol"><span class="fmt-mono">1.</span></button>
+    <button id="fmt-task" title="Task List" data-i18n-title="tooltip.task">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25V2.75C1 1.784 1.784 1 2.75 1Zm10.5 1.5H2.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8.75l4-4a.75.75 0 1 1 1.06 1.06l-4.5 4.5a.75.75 0 0 1-1.06 0l-2-2a.75.75 0 1 1 1.06-1.06Z"/></svg>
+    </button>
+    <button id="fmt-quote" title="Blockquote" data-i18n-title="tooltip.quote">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 2.5h10.5a.25.25 0 0 1 .25.25v10.5a.25.25 0 0 1-.25.25H1.75a.25.25 0 0 1-.25-.25V2.75a.25.25 0 0 1 .25-.25ZM12.25 1H1.75A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h10.5A1.75 1.75 0 0 0 14 13.25V2.75A1.75 1.75 0 0 0 12.25 1ZM3.5 6.25a.75.75 0 0 1 .75-.75h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1-.75-.75Zm.75 2.25a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5Z"/></svg>
+    </button>
+    <div class="fmt-sep"></div>
+    <button id="fmt-hr" title="Horizontal Rule" data-i18n-title="tooltip.hr"><span class="fmt-mono">―</span></button>
+    <button id="fmt-codeblock" title="Code Block" data-i18n-title="tooltip.codeblock"><span class="fmt-mono">{ }</span></button>
+    <button id="fmt-table" title="Table" data-i18n-title="tooltip.table">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25ZM6.5 6.5v3h3v-3Zm3-1.5v-3h-3v3Zm1.5 1.5v3H14.5v-3Zm0-1.5H14.5V1.75a.25.25 0 0 0-.25-.25H11ZM1.5 6.5v3H5v-3ZM5 5V1.75a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25V5ZM1.5 11v3.25c0 .138.112.25.25.25H5v-3.5Zm5 0v3.5h3v-3.5Zm5 0v3.25c0 .138.112.25.25.25H14.25a.25.25 0 0 0 .25-.25V11Z"/></svg>
+    </button>
+    <div class="fmt-sep"></div>
+    <!-- Insert dropdown -->
+    <div id="insert-wrap" class="fmt-dropdown-wrap">
+      <button id="fmt-insert" title="Insert..." data-i18n-title="tooltip.insert"><span class="fmt-mono">+</span><span class="fmt-dropdown-arrow">&#9662;</span></button>
+      <div id="insert-menu" class="fmt-dropdown hidden">
+        <button id="fmt-math-inline" data-i18n="insert.mathInline">Math (inline)</button>
+        <button id="fmt-math-block" data-i18n="insert.mathBlock">Math (block)</button>
+        <button id="fmt-mermaid" data-i18n="insert.mermaid">Mermaid Diagram</button>
+        <div class="context-sep"></div>
+        <button id="fmt-sup" data-i18n="insert.sup">Superscript</button>
+        <button id="fmt-sub" data-i18n="insert.sub">Subscript</button>
+        <button id="fmt-footnote" data-i18n="insert.footnote">Footnote</button>
+        <div class="context-sep"></div>
+        <button id="fmt-comment" data-i18n="insert.comment">Comment</button>
+        <button id="fmt-details" data-i18n="insert.details">Collapsible Section</button>
+      </div>
+    </div>
+    <div class="fmt-sep"></div>
+    <button id="fmt-md-table-align" title="Align Table Columns" data-i18n-title="tooltip.md.tableAlign"><span class="fmt-mono">⇲tbl</span></button>
+    <button id="fmt-md-ol-renum" title="Renumber Ordered Lists" data-i18n-title="tooltip.md.olRenum"><span class="fmt-mono">1·2·3</span></button>
+    </div><!-- /.fmt-group markdown -->
+
+    <!-- CSV / TSV -->
+    <div class="fmt-group" data-view="csv,tsv" hidden>
+      <button id="fmt-csv-row-above" title="Insert Row Above" data-i18n-title="tooltip.csv.rowAbove"><span class="fmt-mono">+R↑</span></button>
+      <button id="fmt-csv-row-below" title="Insert Row Below" data-i18n-title="tooltip.csv.rowBelow"><span class="fmt-mono">+R↓</span></button>
+      <button id="fmt-csv-col-left" title="Insert Column Left" data-i18n-title="tooltip.csv.colLeft"><span class="fmt-mono">+C←</span></button>
+      <button id="fmt-csv-col-right" title="Insert Column Right" data-i18n-title="tooltip.csv.colRight"><span class="fmt-mono">+C→</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-csv-del-row" title="Delete Row" data-i18n-title="tooltip.csv.delRow"><span class="fmt-mono">−R</span></button>
+      <button id="fmt-csv-del-col" title="Delete Column" data-i18n-title="tooltip.csv.delCol"><span class="fmt-mono">−C</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-csv-clear-sort" title="Clear Sort" data-i18n-title="tooltip.csv.clearSort"><span class="fmt-mono">⇅×</span></button>
+      <button id="fmt-csv-clear-filters" title="Clear Filters" data-i18n-title="tooltip.csv.clearFilters"><span class="fmt-mono">▼×</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-csv-trim" title="Trim Whitespace" data-i18n-title="tooltip.csv.trim"><span class="fmt-mono">⌫ws</span></button>
+      <button id="fmt-csv-dedupe" title="Remove Duplicate Rows" data-i18n-title="tooltip.csv.dedupe"><span class="fmt-mono">=×</span></button>
+      <button id="fmt-csv-fill-down" title="Fill Blanks Down" data-i18n-title="tooltip.csv.fillDown"><span class="fmt-mono">↓fill</span></button>
+      <button id="fmt-csv-split-col" title="Split Column by Delimiter" data-i18n-title="tooltip.csv.splitCol"><span class="fmt-mono">||→|||</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-csv-copy-md" title="Copy as Markdown Table" data-i18n-title="tooltip.csv.copyMd"><span class="fmt-mono">MD</span></button>
+      <button id="fmt-csv-to-json" title="Copy as JSON" data-i18n-title="tooltip.csv.toJson"><span class="fmt-mono">JSON</span></button>
+      <button id="fmt-csv-to-yaml" title="Copy as YAML" data-i18n-title="tooltip.csv.toYaml"><span class="fmt-mono">YAML</span></button>
+      <button id="fmt-csv-transpose" title="Transpose Rows ↔ Columns" data-i18n-title="tooltip.csv.transpose"><span class="fmt-mono">⇄</span></button>
+    </div>
+
+    <!-- JSON -->
+    <div class="fmt-group" data-view="json" hidden>
+      <button id="fmt-json-beautify2" title="Beautify (2-space)" data-i18n-title="tooltip.json.beautify2"><span class="fmt-mono">{·2}</span></button>
+      <button id="fmt-json-beautify4" title="Beautify (4-space)" data-i18n-title="tooltip.json.beautify4"><span class="fmt-mono">{·4}</span></button>
+      <button id="fmt-json-minify" title="Minify" data-i18n-title="tooltip.json.minify"><span class="fmt-mono">{·}</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-json-sort-keys" title="Sort Keys (A→Z)" data-i18n-title="tooltip.json.sortKeys"><span class="fmt-mono">A↓Z</span></button>
+      <button id="fmt-json-to-yaml" title="Copy to clipboard as YAML" data-i18n-title="tooltip.json.toYaml"><span class="fmt-mono">→YAML</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-json-expand-all" title="Expand All" data-i18n-title="tooltip.json.expandAll"><span class="fmt-mono">[+]</span></button>
+      <button id="fmt-json-collapse-all" title="Collapse All" data-i18n-title="tooltip.json.collapseAll"><span class="fmt-mono">[−]</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-json-escape" title="Escape as JSON String" data-i18n-title="tooltip.json.escape"><span class="fmt-mono">\"…\"</span></button>
+      <button id="fmt-json-unescape" title="Unescape JSON String" data-i18n-title="tooltip.json.unescape"><span class="fmt-mono">…</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-json-repair" title="Repair Broken JSON" data-i18n-title="tooltip.json.repair"><span class="fmt-mono">⚒</span></button>
+      <button id="fmt-json-path" title="JSONPath Query" data-i18n-title="tooltip.json.path"><span class="fmt-mono">$.?</span></button>
+      <button id="fmt-json-schema" title="Validate Against Schema" data-i18n-title="tooltip.json.schema"><span class="fmt-mono">✓sch</span></button>
+      <button id="fmt-json-diff" title="Diff Check" data-i18n-title="tooltip.json.diff"><span class="fmt-mono">Δ</span></button>
+    </div>
+
+    <!-- JSONL / NDJSON -->
+    <div class="fmt-group" data-view="jsonl" hidden>
+      <button id="fmt-jsonl-minify-each" title="Minify Each Line" data-i18n-title="tooltip.jsonl.minify"><span class="fmt-mono">{·}·n</span></button>
+      <button id="fmt-jsonl-to-array" title="Convert to JSON Array" data-i18n-title="tooltip.jsonl.toArray"><span class="fmt-mono">→[ ]</span></button>
+      <button id="fmt-jsonl-from-array" title="Convert JSON Array to JSONL" data-i18n-title="tooltip.jsonl.fromArray"><span class="fmt-mono">[ ]→</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-jsonl-to-csv" title="Copy as CSV" data-i18n-title="tooltip.jsonl.toCsv"><span class="fmt-mono">CSV</span></button>
+      <button id="fmt-jsonl-stats" title="Row/Key Statistics" data-i18n-title="tooltip.jsonl.stats"><span class="fmt-mono">#·#</span></button>
+    </div>
+
+    <!-- YAML -->
+    <div class="fmt-group" data-view="yaml" hidden>
+      <button id="fmt-yaml-beautify" title="Reformat" data-i18n-title="tooltip.yaml.beautify"><span class="fmt-mono">⇆fmt</span></button>
+      <button id="fmt-yaml-sort-keys" title="Sort Keys (A→Z)" data-i18n-title="tooltip.yaml.sortKeys"><span class="fmt-mono">A↓Z</span></button>
+      <button id="fmt-yaml-to-json" title="Copy to clipboard as JSON" data-i18n-title="tooltip.yaml.toJson"><span class="fmt-mono">→JSON</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-yaml-expand-all" title="Expand All" data-i18n-title="tooltip.yaml.expandAll"><span class="fmt-mono">[+]</span></button>
+      <button id="fmt-yaml-collapse-all" title="Collapse All" data-i18n-title="tooltip.yaml.collapseAll"><span class="fmt-mono">[−]</span></button>
+    </div>
+
+    <!-- TOML / INI -->
+    <div class="fmt-group" data-view="toml,ini" hidden>
+      <button id="fmt-kv-expand-all" title="Expand All" data-i18n-title="tooltip.kv.expandAll"><span class="fmt-mono">[+]</span></button>
+      <button id="fmt-kv-collapse-all" title="Collapse All" data-i18n-title="tooltip.kv.collapseAll"><span class="fmt-mono">[−]</span></button>
+    </div>
+
+    <!-- HTML / XML (shared) -->
+    <div class="fmt-group" data-view="html,xml" hidden>
+      <button id="fmt-markup-beautify" title="Beautify" data-i18n-title="tooltip.markup.beautify"><span class="fmt-mono">⇆fmt</span></button>
+      <button id="fmt-markup-minify" title="Minify" data-i18n-title="tooltip.markup.minify"><span class="fmt-mono">{·}</span></button>
+      <div class="fmt-sep"></div>
+      <button id="fmt-markup-strip" title="Strip Tags" data-i18n-title="tooltip.markup.strip"><span class="fmt-mono">&lt;/&gt;×</span></button>
+    </div>
+
+    <!-- HTML only -->
+    <div class="fmt-group" data-view="html" hidden>
+      <div class="fmt-sep"></div>
+      <button id="fmt-html-ent-enc" title="Encode HTML Entities" data-i18n-title="tooltip.html.entEnc"><span class="fmt-mono">&amp;lt;</span></button>
+      <button id="fmt-html-ent-dec" title="Decode HTML Entities" data-i18n-title="tooltip.html.entDec"><span class="fmt-mono">&amp;→&lt;</span></button>
+      <button id="fmt-html-to-md" title="Copy as Markdown" data-i18n-title="tooltip.html.toMd"><span class="fmt-mono">→MD</span></button>
+    </div>
+
+    <!-- XML only -->
+    <div class="fmt-group" data-view="xml" hidden>
+      <div class="fmt-sep"></div>
+      <button id="fmt-xml-xpath" title="XPath Query" data-i18n-title="tooltip.xml.xpath"><span class="fmt-mono">/xp/</span></button>
+    </div>
+
+    <!-- .env -->
+    <div class="fmt-group" data-view="env" hidden>
+      <button id="fmt-env-validate" title="Validate .env" data-i18n-title="tooltip.env.validate"><span class="fmt-mono">✓env</span></button>
+    </div>
+
+    <!-- Mermaid -->
+    <div class="fmt-group" data-view="mermaid" hidden>
+      <div id="mmd-insert-wrap" class="fmt-dropdown-wrap">
+        <button id="fmt-mmd-insert" title="Insert Diagram" data-i18n-title="tooltip.mmd.insert"><span class="fmt-mono">+dgm</span><span class="fmt-dropdown-arrow">&#9662;</span></button>
+        <div id="mmd-insert-menu" class="fmt-dropdown hidden">
+          <button data-mmd="flowchart" data-i18n="mmd.flowchart">Flowchart</button>
+          <button data-mmd="sequence" data-i18n="mmd.sequence">Sequence Diagram</button>
+          <button data-mmd="class" data-i18n="mmd.class">Class Diagram</button>
+          <button data-mmd="state" data-i18n="mmd.state">State Diagram</button>
+          <button data-mmd="er" data-i18n="mmd.er">ER Diagram</button>
+          <button data-mmd="gantt" data-i18n="mmd.gantt">Gantt Chart</button>
+          <button data-mmd="pie" data-i18n="mmd.pie">Pie Chart</button>
+          <button data-mmd="mindmap" data-i18n="mmd.mindmap">Mind Map</button>
+          <button data-mmd="timeline" data-i18n="mmd.timeline">Timeline</button>
+          <button data-mmd="journey" data-i18n="mmd.journey">User Journey</button>
+        </div>
+      </div>
+      <div class="fmt-sep"></div>
+      <button id="fmt-mmd-arrow" title="Insert Arrow" data-i18n-title="tooltip.mmd.arrow"><span class="fmt-mono">A→B</span></button>
+      <button id="fmt-mmd-node-decision" title="Insert Decision Node" data-i18n-title="tooltip.mmd.decision"><span class="fmt-mono">&lt;&gt;</span></button>
+      <button id="fmt-mmd-subgraph" title="Insert Subgraph" data-i18n-title="tooltip.mmd.subgraph"><span class="fmt-mono">⎡⎦</span></button>
+      <div class="fmt-sep"></div>
+      <div id="mmd-theme-wrap" class="fmt-dropdown-wrap">
+        <button id="fmt-mmd-theme" title="Diagram Theme" data-i18n-title="tooltip.mmd.theme"><span class="fmt-mono">🎨</span><span class="fmt-dropdown-arrow">&#9662;</span></button>
+        <div id="mmd-theme-menu" class="fmt-dropdown hidden">
+          <button data-theme="default" data-i18n="mmd.theme.default">Default</button>
+          <button data-theme="dark" data-i18n="mmd.theme.dark">Dark</button>
+          <button data-theme="forest" data-i18n="mmd.theme.forest">Forest</button>
+          <button data-theme="neutral" data-i18n="mmd.theme.neutral">Neutral</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Format Modal (shared for XPath/JSONPath/Schema/Diff dialogs) -->
+  <div id="fmt-modal" class="hidden">
+    <div id="fmt-modal-backdrop"></div>
+    <div id="fmt-modal-content">
+      <div id="fmt-modal-header">
+        <span id="fmt-modal-title"></span>
+        <button id="fmt-modal-close" title="Close">&times;</button>
+      </div>
+      <div id="fmt-modal-body"></div>
+      <div id="fmt-modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <div id="tab-bar">
+    <div id="tab-list"></div>
+  </div>
+
+  <!-- Main workspace -->
+  <div id="workspace">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div id="sidebar-header">
+        <button class="sidebar-tab active" data-panel="files" data-i18n="header.files">Files</button>
+        <button class="sidebar-tab" data-panel="search" data-i18n="header.search">Search</button>
+        <button class="sidebar-tab" data-panel="toc" data-i18n="header.toc">TOC</button>
+        <button class="sidebar-tab" data-panel="backlinks" data-i18n="header.backlinks">Links</button>
+      </div>
+      <!-- File tree panel -->
+      <div id="sidebar-files" class="sidebar-panel active">
+        <div id="file-tree-toolbar">
+          <button id="btn-open-folder" title="Open Folder" data-i18n-title="tooltip.openFolder">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.513 1.513A1.75 1.75 0 0 1 1.75 1h3.5c.464 0 .909.184 1.237.513l1.414 1.414a.25.25 0 0 0 .177.073h5.672A1.75 1.75 0 0 1 15.5 4.75v7.5A1.75 1.75 0 0 1 13.75 14H1.75A1.75 1.75 0 0 1 0 12.25V2.75c0-.464.184-.909.513-1.237Z"/></svg>
+          </button>
+          <button id="btn-refresh-tree" title="Refresh" data-i18n-title="tooltip.refresh">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+          </button>
+        </div>
+        <div id="file-tree"></div>
+      </div>
+      <!-- Search panel -->
+      <div id="sidebar-search" class="sidebar-panel">
+        <div id="search-input-area">
+          <div id="search-input-row">
+            <input type="text" id="search-input" placeholder="Search in files..." data-i18n-placeholder="search.placeholder">
+            <button id="btn-search-regex" class="search-option-btn" title="Use regular expression" data-i18n-title="search.regex">.*</button>
+            <button id="btn-search-case" class="search-option-btn" title="Match case" data-i18n-title="search.case">Aa</button>
+          </div>
+          <div id="search-ext-row">
+            <button id="btn-search-ext" type="button" class="search-ext-btn">
+              <span id="search-ext-label" data-i18n="search.extAll">files: all</span>
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M3.22 5.22a.75.75 0 0 1 1.06 0L8 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 0-1.06z"/></svg>
+            </button>
+            <div id="search-ext-popover" class="hidden">
+              <div id="search-ext-popover-header">
+                <button id="btn-search-ext-all" type="button" data-i18n="search.extSelectAll">Select all</button>
+                <button id="btn-search-ext-none" type="button" data-i18n="search.extClear">Clear</button>
+              </div>
+              <div id="search-ext-list"></div>
+            </div>
+          </div>
+          <div id="search-status"></div>
+        </div>
+        <div id="search-results"></div>
+      </div>
+      <!-- TOC panel -->
+      <div id="sidebar-toc" class="sidebar-panel">
+        <div id="toc-source-header"><span id="toc-source-label"></span></div>
+        <nav id="toc"></nav>
+      </div>
+      <!-- Backlinks panel -->
+      <div id="sidebar-backlinks" class="sidebar-panel">
+        <div id="backlinks-content"></div>
+      </div>
+    </aside>
+    <div id="sidebar-resize"></div>
+
+    <!-- Editor pane -->
+    <div id="editor-pane">
+      <div id="editor"></div>
+    </div>
+
+    <!-- Resizable divider -->
+    <div id="divider"></div>
+
+    <!-- Preview pane -->
+    <div id="preview-pane">
+      <article id="content" class="markdown-body"></article>
+    </div>
+
+    <!-- Welcome screen (inside workspace, after sidebar) -->
+    <div id="welcome">
+      <div id="welcome-inner">
+        <div id="welcome-icon">
+          <img src="formatpad-mark.png" alt="" width="128" height="128">
+        </div>
+        <h2>FormatPad</h2>
+        <p data-i18n-html="welcome">Drag a file here, press <kbd>Ctrl+O</kbd> to open,<br>or <kbd>Ctrl+N</kbd> to create a new file.</p>
+        <button id="btn-set-default" title="Set FormatPad as default app for supported files" data-i18n="setDefault" data-i18n-title="tooltip.setDefault">Set as Default App</button>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <span id="status-cursor">Ln 1, Col 1</span>
+    <span id="status-selection"></span>
+    <span class="statusbar-sep"></span>
+    <span id="status-words">0 words</span>
+    <span class="statusbar-sep"></span>
+    <span id="status-readtime">~0 min</span>
+    <span class="statusbar-sep"></span>
+    <span id="status-zoom" title="Ctrl+Wheel to zoom, click to reset">100%</span>
+  </div>
+
+  <!-- Theme panel (sidebar) -->
+  <div id="theme-panel" class="hidden">
+    <div id="theme-panel-header">
+      <strong data-i18n="header.theme">Theme</strong>
+      <div id="theme-panel-header-actions">
+        <button id="btn-add-theme" title="Add New Theme" data-i18n-title="tooltip.addTheme">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>
+        </button>
+        <button id="theme-panel-close">&times;</button>
+      </div>
+    </div>
+    <div id="theme-panel-body">
+      <div id="theme-list"></div>
+      <div id="customize-fields" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- Tab context menu -->
+  <div id="tab-context-menu" class="hidden">
+    <button id="tctx-close" data-i18n="context.closeTab">Close</button>
+    <button id="tctx-close-others" data-i18n="context.closeOthers">Close Others</button>
+    <button id="tctx-close-all" data-i18n="context.closeAll">Close All</button>
+    <div class="context-sep"></div>
+    <button id="tctx-pin" data-i18n="context.pin">Pin</button>
+    <button id="tctx-reveal" data-i18n="context.revealInExplorer">Reveal in File Explorer</button>
+  </div>
+
+  <!-- Context menu -->
+  <div id="context-menu" class="hidden">
+    <button id="ctx-new-file" data-i18n="context.newFile">New File</button>
+    <button id="ctx-new-md" data-i18n="context.newMdFile">New .md File</button>
+    <button id="ctx-new-folder" data-i18n="context.newFolder">New Folder</button>
+    <div class="context-sep" id="ctx-sep-new"></div>
+    <button id="ctx-reveal" data-i18n="context.revealInExplorer">Reveal in File Explorer</button>
+    <div class="context-sep" id="ctx-sep-mutate"></div>
+    <button id="ctx-rename" data-i18n="context.rename">Rename</button>
+    <button id="ctx-delete" data-i18n="context.delete">Delete</button>
+  </div>
+
+  <script src="../../dist/renderer.js"></script>
+</body>
+</html>

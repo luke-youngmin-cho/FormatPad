@@ -1,0 +1,50 @@
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+contextBridge.exposeInMainWorld('formatpad', {
+  platform: process.platform,
+  // File operations
+  onLoadMarkdown: (cb) => ipcRenderer.on('load-markdown', (_e, d) => cb(d)),
+  getSystemTheme: () => ipcRenderer.invoke('get-system-theme'),
+  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
+  saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
+  saveFileAs: (content) => ipcRenderer.invoke('save-file-as', content),
+  dropFile: (p) => ipcRenderer.send('drop-file', p),
+  getPathForFile: (f) => webUtils.getPathForFile(f),
+  openDefaultAppsSettings: () => ipcRenderer.invoke('open-default-apps-settings'),
+  showSaveDialog: () => ipcRenderer.invoke('show-save-dialog'),
+  onCheckBeforeClose: (cb) => ipcRenderer.on('check-before-close', () => cb()),
+  confirmClose: () => ipcRenderer.send('confirm-close'),
+  getLocale: () => ipcRenderer.invoke('get-locale'),
+  setLocale: (code) => ipcRenderer.send('set-locale', code),
+  autoSaveRecovery: (filePath, content) => ipcRenderer.invoke('auto-save-recovery', filePath, content),
+  clearRecovery: (filePath) => ipcRenderer.invoke('clear-recovery', filePath),
+  saveImage: (filePath, buffer, ext) => ipcRenderer.invoke('save-image', filePath, buffer, ext),
+  setTitle: (title) => ipcRenderer.send('set-title', title),
+  // File tree & workspace
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
+  readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
+  watchDirectory: (dirPath) => ipcRenderer.invoke('watch-directory', dirPath),
+  unwatchDirectory: () => ipcRenderer.invoke('unwatch-directory'),
+  onDirectoryChanged: (cb) => ipcRenderer.on('directory-changed', (_e, d) => cb(d)),
+  createFile: (filePath) => ipcRenderer.invoke('create-file', filePath),
+  createFolder: (folderPath) => ipcRenderer.invoke('create-folder', folderPath),
+  renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
+  deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
+  // Search
+  searchFiles: (dirPath, query, options) => ipcRenderer.invoke('search-files', dirPath, query, options),
+  // Link index
+  buildLinkIndex: (dirPath) => ipcRenderer.invoke('build-link-index', dirPath),
+  resolveWikiLink: (dirPath, target) => ipcRenderer.invoke('resolve-wiki-link', dirPath, target),
+  getBacklinks: (dirPath, filePath) => ipcRenderer.invoke('get-backlinks', dirPath, filePath),
+  getFileNames: (dirPath) => ipcRenderer.invoke('get-file-names', dirPath),
+  revealInExplorer: (targetPath) => ipcRenderer.invoke('reveal-in-explorer', targetPath),
+  saveBinary: (name, buffer) => ipcRenderer.invoke('save-binary', name, buffer),
+  saveText: (name, text) => ipcRenderer.invoke('save-text', name, text),
+  svgToPng: (svg, width, height, bg) => ipcRenderer.invoke('svg-to-png', svg, width, height, bg),
+  // Auto-update
+  onShowUpdateDialog: (cb) => ipcRenderer.on('show-update-dialog', (_e, d) => cb(d)),
+  onUpdateProgress: (cb) => ipcRenderer.on('update-progress', (_e, p) => cb(p)),
+  onUpdateError: (cb) => ipcRenderer.on('update-error', (_e, m) => cb(m)),
+  updateAction: (action) => ipcRenderer.send('update-action', action),
+});
