@@ -10,9 +10,12 @@ test('mermaid fenced block renders an SVG in preview', async () => {
 
   await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
 
-  const preview = win.locator('#content');
-  // Mermaid renders asynchronously; allow generous timeout
-  await expect(preview.locator('svg').first()).toBeVisible({ timeout: 20000 });
+  // Wait past the 400ms per-block debounce before polling for the SVG.
+  await win.waitForTimeout(600);
+
+  // renderMermaidBlocks() renders SVG into .mermaid-block inside #content.
+  // Use the class selector so we only match the actual mermaid output.
+  await expect(win.locator('#content .mermaid-block svg').first()).toBeVisible({ timeout: 15000 });
 
   await app.close();
 });

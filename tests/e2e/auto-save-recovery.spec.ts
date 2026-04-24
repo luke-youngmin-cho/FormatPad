@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import * as fs from 'fs';
+import * as nodePath from 'path';
 import { launchElectron } from '../helpers';
 
 test('recovery file is written for unsaved changes', async () => {
@@ -11,14 +13,13 @@ test('recovery file is written for unsaved changes', async () => {
     await window.formatpad.autoSaveRecovery(null, '# Recovery smoke test\n\nUnsaved content.');
   });
 
-  // Verify the recovery file was written in the app userData directory
-  const hasRecovery = await app.evaluate(async ({ app: electronApp }) => {
-    const nodePath = require('path') as typeof import('path');
-    const nodeFs   = require('fs/promises') as typeof import('fs/promises');
-    const dir = nodePath.join(electronApp.getPath('userData'), 'recovery');
-    const files = await nodeFs.readdir(dir).catch(() => [] as string[]);
-    return files.some((f: string) => f.endsWith('.json'));
-  });
+  // Get userData path from main process (no require needed in evaluate body)
+  const userData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
+
+  // Verify the recovery file was written using Node fs in the test file (not inside evaluate)
+  const recoveryDir = nodePath.join(userData, 'recovery');
+  const files: string[] = fs.existsSync(recoveryDir) ? fs.readdirSync(recoveryDir) : [];
+  const hasRecovery = files.some(f => f.endsWith('.json'));
 
   expect(hasRecovery).toBe(true);
 

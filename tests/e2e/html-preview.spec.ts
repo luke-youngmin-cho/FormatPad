@@ -13,9 +13,10 @@ test('HTML preview renders sanitized output; inline script does not execute', as
 
   await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
 
-  // The <h1> from the fixture should appear in the preview
-  const preview = win.locator('#content');
-  await expect(preview.locator('h1').first()).toBeVisible({ timeout: 8000 });
+  // renderHTMLPreview() writes content into a sandboxed srcdoc iframe inside #content.
+  // Use frameLocator to reach into the iframe's document.
+  const iframe = win.frameLocator('#content iframe');
+  await expect(iframe.locator('h1').first()).toBeVisible({ timeout: 8000 });
 
   // Allow a short settle time; the alert(1) must NOT have fired
   await win.waitForTimeout(300);
