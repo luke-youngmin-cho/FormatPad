@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 release/
+docs/
 
 # Claude Code local state
 .claude/
