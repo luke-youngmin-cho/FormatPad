@@ -941,7 +941,7 @@ ipcMain.handle('reveal-in-explorer', async (_event, targetPath) => {
 const RENDERER_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data: blob:; font-src 'self' data:; " +
-  "connect-src 'self' https://api.github.com https://api.githubusercontent.com; " +
+  "connect-src 'self' https://api.github.com https://api.githubusercontent.com https://plausible.io; " +
   "worker-src 'self' blob:; frame-src 'none'; object-src 'none'; " +
   "base-uri 'none'; form-action 'none';";
 

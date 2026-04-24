@@ -261,6 +261,11 @@ reporting — no network calls are made.
 See [Sentry's privacy policy](https://sentry.io/privacy/) for details on how
 captured data is stored and processed.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for the security baseline, CSP policy, IPC handler
+inventory, localStorage audit, and known follow-ups.
+
 ## License
 
 MIT
