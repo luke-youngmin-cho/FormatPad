@@ -3,6 +3,7 @@ productName: FormatPad
 asar: true
 asarUnpack:
   - "node_modules/**/*.node"
+  - "node_modules/@homebridge/node-pty-prebuilt-multiarch/**"
 compression: maximum
 electronLanguages:
   - en-US

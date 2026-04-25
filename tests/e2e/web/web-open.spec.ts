@@ -36,3 +36,47 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
 
   await close();
 });
+
+test('web PWA assets are self-contained for offline install', async () => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const sw = fs.readFileSync(path.join(docsDir, 'sw.js'), 'utf-8');
+  expect(sw).not.toContain('storage.googleapis.com');
+  expect(sw).toContain('styles/fonts/KaTeX_Main-Regular.woff2');
+  expect(fs.existsSync(path.join(docsDir, 'styles', 'fonts', 'KaTeX_Main-Regular.woff2'))).toBe(true);
+});
+
+test('web file launch consumer and non-FSA save fallback work', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await page.goto(url);
+  await page.waitForLoadState('networkidle');
+
+  const opened = await page.evaluate(async () => {
+    return await (window as any).formatpad.openFileHandles([{
+      kind: 'file',
+      name: 'launch.md',
+      getFile: async () => new File(['# Launched\n\nfrom file handler'], 'launch.md', { type: 'text/markdown' }),
+    }]);
+  });
+  expect(opened).toBe(true);
+  await expect(page.locator('.tab-item')).toContainText('launch.md');
+  await expect(page.locator('.cm-content')).toContainText('from file handler');
+
+  const downloadPromise = page.waitForEvent('download');
+  const saved = await page.evaluate(async () => {
+    return await (window as any).formatpad.saveFile('web:nohandle/fallback.md', '# Download fallback');
+  });
+  expect(saved).toBe(true);
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('fallback.md');
+
+  await close();
+});

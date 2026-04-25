@@ -101,10 +101,62 @@ All local. No cloud, no subscription, no account.
 | Ctrl+Shift+Tab | Previous tab |
 | Ctrl+B | Bold (Markdown) |
 | Ctrl+I | Italic (Markdown) |
-| Ctrl+K | Link (Markdown) |
+| Ctrl+K | Link (Markdown); waits briefly for the Zen chord |
+| Ctrl+K, Z | Toggle Zen Mode |
+| Alt+Up / Alt+Down | Move line up / down |
+| Shift+Alt+Up / Shift+Alt+Down | Copy line up / down |
+| Ctrl+/ | Toggle line comment |
+| Ctrl+Shift+/ | Toggle block comment |
+| Ctrl+Alt+Up / Ctrl+Alt+Down | Add cursor above / below |
+| Ctrl+D | Select next occurrence |
+| Ctrl+Shift+L | Select all matching occurrences |
+| Ctrl+Shift+[ / Ctrl+Shift+] | Fold / unfold current block |
 | Ctrl+T | Toggle TOC sidebar |
 | Ctrl+Shift+E | File explorer sidebar |
 | Ctrl+Shift+F | Search in files |
+| Ctrl+L | Toggle AI sidebar |
+
+The command palette includes `Editor: Toggle Vim Mode`, `Editor: Toggle
+Minimap`, and `Editor: Toggle Zen Mode`. Vim mode is persisted in
+`localStorage["editor.vim"]`; when Vim normal-mode keys are active, use the
+command palette shortcut to toggle it without typing editor text. `Ctrl+L`
+stays assigned to the AI sidebar, so editor navigation does not steal that
+binding.
+
+### Git status
+
+When the open workspace is a Git repository, FormatPad shows the current
+branch in the status bar, file badges in the Files sidebar, and change markers
+in the editor gutter. Git commands in the command palette are status-only:
+refresh, branch switch, diff against HEAD, and revert current file. Commit,
+push, pull, fetch, auth, conflict resolution, and Git LFS are intentionally out
+of scope for this phase.
+
+Large repositories can make client-side `statusMatrix` scans slow; FormatPad
+shows a scanning banner if the initial status load takes more than three
+seconds. In the web build, Git status uses the browser's File System Access
+handles and rebuilds its view from disk each load, which is intended for
+small-to-mid-size repositories rather than very large monorepos.
+
+### Snippets
+
+FormatPad ships built-in CodeMirror snippets for Markdown, JSON, YAML, CSV,
+Mermaid, and `.env` files. Snippets appear in autocomplete with a `snippet`
+tag, can be inserted through `Insert Snippet...` in the command palette, and
+support placeholder cycling with Tab / Shift+Tab. Typing a snippet name with a
+colon, such as `toc-marker:`, then pressing Tab expands it inline.
+
+Workspace snippets live at `.formatpad/snippets.json` and override the
+cross-workspace fallback stored in the app user-data `snippets.json`. The
+schema is:
+
+```json
+{
+  "markdown": [
+    { "name": "note", "body": "> **Note** ${0}" }
+  ]
+}
+```
 
 ## Install
 
@@ -113,6 +165,13 @@ All local. No cloud, no subscription, no account.
 No install needed — open
 [luke-youngmin-cho.github.io/FormatPad](https://luke-youngmin-cho.github.io/FormatPad/).
 
+FormatPad Web is also installable as a PWA in Chromium-based browsers. Open
+it once online, accept the browser install prompt on a later visit, and the
+app shell remains available for offline launch/editing. Network-backed
+features such as URL fetches, AI providers, GitHub APIs, and MCP-related
+actions still require connectivity and surface normal error messages while
+offline.
+
 Chromium-based browsers (Chrome, Edge, Arc, Opera) get everything the
 desktop app offers except OS integration: folder browsing, cross-file
 search, wiki-link backlinks, and read-write file access, all through the
@@ -120,6 +179,25 @@ search, wiki-link backlinks, and read-write file access, all through the
 Firefox and Safari work for single-file open and Save As via a download;
 Open Folder surfaces a clear "needs Chromium" message rather than
 silently failing.
+
+The current GitHub Pages manifest is scoped to `/FormatPad/`. If the planned
+root domain (`formatpad.io`) becomes the primary deployment target, switch the
+manifest `start_url`, `scope`, and `file_handlers.action` to `/`.
+
+#### Share a file via URL
+
+FormatPad Web can open trusted source URLs directly:
+
+```text
+https://luke-youngmin-cho.github.io/FormatPad/?github=nodejs/node/blob/main/README.md
+https://luke-youngmin-cho.github.io/FormatPad/?gist=<gist_id>
+https://luke-youngmin-cho.github.io/FormatPad/?src=https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+```
+
+Use the **Share** button to copy a `?fragment=` snapshot link for the current
+tab. URL-loaded and fragment-loaded tabs are marked unsaved, so saving always
+prompts for a local filename. Only HTTPS URLs are accepted; trusted hosts open
+directly, and other hosts ask for confirmation before fetching.
 
 ### Desktop
 
@@ -189,6 +267,7 @@ npm run dist:mac    # macOS universal DMG (must be run on macOS)
 # Build the web app into docs/ (GitHub Pages target)
 npm run build:web       # dev bundle
 npm run build:web:min   # minified bundle for deploy
+npm run lh              # Lighthouse PWA check against localhost:4173
 ```
 
 ## Tech stack
@@ -245,7 +324,8 @@ localStorage.removeItem('sentry-opt-out');
 ### Self-hosted / custom builds
 
 Crash reports are only sent when the `SENTRY_DSN` environment variable is set at
-launch. Official FormatPad releases have a DSN baked in by the release pipeline.
+launch. Current release builds do not assume a baked-in DSN; release pipelines
+that want crash reporting must inject and verify their own DSN explicitly.
 If you build from source and want your own crash reporting, create a project at
 [sentry.io](https://sentry.io) and launch with:
 

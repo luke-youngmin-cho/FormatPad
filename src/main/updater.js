@@ -2,9 +2,16 @@ const { app, dialog, shell } = require('electron');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const GITHUB_OWNER = 'luke-youngmin-cho';
 const GITHUB_REPO = 'FormatPad';
+const RELEASE_MANIFEST_NAMES = new Set([
+  'formatpad-release-manifest.json',
+  'formatpad-release-manifest-windows.json',
+  'formatpad-release-manifest-macos.json',
+  'release-manifest.json',
+]);
 
 // --- Version comparison (semver-lite) ---
 // Splits "1.2.3-beta.4" into { base: [1,2,3], pre: ['beta', 4] }. Any release with a
@@ -162,6 +169,126 @@ function downloadFile(url, destPath, onProgress) {
   });
 }
 
+function getUpdaterPublicKey() {
+  if (process.env.FORMATPAD_UPDATER_PUBLIC_KEY) {
+    return String(process.env.FORMATPAD_UPDATER_PUBLIC_KEY).trim();
+  }
+  try {
+    const configured = require('./updater-public-key.json');
+    return String(configured?.publicKey || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+function publicKeyObject(publicKey) {
+  const key = String(publicKey || '').trim();
+  if (!key) throw new Error('Updater public key is not configured.');
+  if (key.includes('BEGIN PUBLIC KEY')) return crypto.createPublicKey(key);
+  return crypto.createPublicKey({
+    key: Buffer.from(key, 'base64'),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function verifyManifestSignature(manifest, publicKey) {
+  const signature = manifest?.signature;
+  if (signature?.algorithm !== 'ed25519' || !signature?.value) {
+    throw new Error('Release manifest signature is missing or unsupported.');
+  }
+  const payload = { ...manifest };
+  delete payload.signature;
+  const verified = crypto.verify(
+    null,
+    Buffer.from(stableStringify(payload), 'utf-8'),
+    publicKeyObject(publicKey),
+    Buffer.from(signature.value, 'base64')
+  );
+  if (!verified) throw new Error('Release manifest signature verification failed.');
+}
+
+function platformManifestName() {
+  if (process.platform === 'darwin') return 'formatpad-release-manifest-macos.json';
+  if (process.platform === 'win32') return 'formatpad-release-manifest-windows.json';
+  return 'formatpad-release-manifest.json';
+}
+
+function findManifestAssets(release) {
+  const platformName = platformManifestName();
+  return (release.assets || [])
+    .filter(asset => RELEASE_MANIFEST_NAMES.has(String(asset.name || '').toLowerCase()))
+    .sort((a, b) => {
+      const an = String(a.name || '').toLowerCase() === platformName ? 0 : 1;
+      const bn = String(b.name || '').toLowerCase() === platformName ? 0 : 1;
+      return an - bn;
+    });
+}
+
+function findManifestFile(manifest, assetName, latestVersion) {
+  if (String(manifest?.version || '').replace(/^v/, '') !== latestVersion) {
+    throw new Error('Release manifest version does not match the release tag.');
+  }
+  const files = Array.isArray(manifest?.files) ? manifest.files : [];
+  const file = files.find(item => item?.name === assetName);
+  if (!file?.sha256 || !/^[a-f0-9]{64}$/i.test(file.sha256)) {
+    throw new Error('Release manifest does not include a valid installer checksum.');
+  }
+  return file;
+}
+
+async function loadAndVerifyReleaseManifest(release, installerAsset, latestVersion) {
+  const publicKey = getUpdaterPublicKey();
+  if (!publicKey) throw new Error('Auto-install verification is not configured for this build.');
+  const manifestAssets = findManifestAssets(release);
+  if (!manifestAssets.length) {
+    throw new Error('Release is missing signed installer verification metadata.');
+  }
+  const errors = [];
+  for (const manifestAsset of manifestAssets) {
+    try {
+      const manifest = JSON.parse(await httpsGet(manifestAsset.browser_download_url));
+      verifyManifestSignature(manifest, publicKey);
+      return {
+        manifest,
+        file: findManifestFile(manifest, installerAsset.name, latestVersion),
+      };
+    } catch (err) {
+      errors.push(`${manifestAsset.name}: ${err.message}`);
+    }
+  }
+  throw new Error(`No signed manifest matched this installer. ${errors.join(' / ')}`);
+}
+
+function hashFile(filePath, algorithm = 'sha256') {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash(algorithm);
+    const input = fs.createReadStream(filePath);
+    input.on('data', chunk => hash.update(chunk));
+    input.on('error', reject);
+    input.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+async function verifyDownloadedInstaller(filePath, fileEntry) {
+  const actual = await hashFile(filePath, 'sha256');
+  if (actual.toLowerCase() !== String(fileEntry.sha256 || '').toLowerCase()) {
+    throw new Error('Downloaded installer checksum does not match the signed release manifest.');
+  }
+  if (Number.isFinite(Number(fileEntry.size)) && Number(fileEntry.size) > 0) {
+    const stat = fs.statSync(filePath);
+    if (stat.size !== Number(fileEntry.size)) {
+      throw new Error('Downloaded installer size does not match the signed release manifest.');
+    }
+  }
+}
+
 // Pending update state per-window. Cleared when the user dismisses the prompt.
 const pending = new Map();
 
@@ -182,8 +309,10 @@ async function checkForUpdates(win, t) {
       if (process.platform === 'darwin') return a.name.endsWith('.dmg');
       return a.name.endsWith('.exe') && !a.name.includes('blockmap');
     });
+    const manifestAssets = findManifestAssets(release);
+    const verificationReady = !!installerAsset && manifestAssets.length > 0 && !!getUpdaterPublicKey();
 
-    pending.set(win.id, { release, installerAsset, t });
+    pending.set(win.id, { release, installerAsset, manifestAssets, t });
 
     if (win.isDestroyed()) return;
     win.webContents.send('show-update-dialog', {
@@ -191,7 +320,10 @@ async function checkForUpdates(win, t) {
       latestVersion,
       releaseBody: release.body ? release.body.substring(0, 500) : '',
       releaseUrl: release.html_url,
-      hasInstaller: !!installerAsset,
+      hasInstaller: verificationReady,
+      verificationNotice: installerAsset && !verificationReady
+        ? 'Auto-install is disabled because signed verification metadata is missing or this build has no updater public key. Use View Release for manual download.'
+        : '',
     });
   } catch {
     // Silent fail — don't bother user if offline or API unreachable
@@ -211,6 +343,7 @@ async function handleUpdateAction(win, action) {
     win.setProgressBar(0.01);
     if (!win.isDestroyed()) win.webContents.send('update-progress', 0);
     try {
+      const verification = await loadAndVerifyReleaseManifest(release, installerAsset, latestVersion);
       await downloadFile(
         installerAsset.browser_download_url,
         destPath,
@@ -221,6 +354,7 @@ async function handleUpdateAction(win, action) {
       );
       win.setProgressBar(-1);
       if (!win.isDestroyed()) win.webContents.send('update-progress', 1);
+      await verifyDownloadedInstaller(destPath, verification.file);
       writeMarker(latestVersion);
       const openErr = await shell.openPath(destPath);
       if (openErr) {
@@ -231,9 +365,19 @@ async function handleUpdateAction(win, action) {
         setTimeout(() => app.quit(), 1500);
       }
     } catch (err) {
+      try { fs.unlinkSync(destPath); } catch {}
       win.setProgressBar(-1);
       if (!win.isDestroyed()) win.webContents.send('update-error', err.message);
-      dialog.showErrorBox(t('update.errorTitle'), err.message);
+      const result = await dialog.showMessageBox(win, {
+        type: 'error',
+        title: t('update.errorTitle'),
+        message: err.message,
+        detail: 'For safety, FormatPad did not open the downloaded installer. You can review the GitHub release manually.',
+        buttons: ['OK', 'View Release'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (result.response === 1) shell.openExternal(release.html_url);
     }
   } else if (action === 'view-release') {
     shell.openExternal(release.html_url);
@@ -246,4 +390,12 @@ async function handleUpdateAction(win, action) {
   }
 }
 
-module.exports = { checkForUpdates, handleUpdateAction, checkUpdateInProgress };
+module.exports = {
+  checkForUpdates,
+  handleUpdateAction,
+  checkUpdateInProgress,
+  stableStringify,
+  verifyManifestSignature,
+  findManifestFile,
+  verifyDownloadedInstaller,
+};

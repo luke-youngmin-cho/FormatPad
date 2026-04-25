@@ -1,9 +1,22 @@
 import { initAnalytics, track, sizeBucket, stackSig } from './analytics.js';
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
-import { keymap } from '@codemirror/view';
-import { undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
+import { Compartment, EditorSelection, EditorState, Prec } from '@codemirror/state';
+import { keymap, ViewPlugin } from '@codemirror/view';
+import {
+  addCursorAbove,
+  addCursorBelow,
+  copyLineDown,
+  copyLineUp,
+  moveLineDown,
+  moveLineUp,
+  redo as cmRedo,
+  toggleBlockComment,
+  toggleComment,
+  undo as cmUndo,
+} from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { foldCode, foldedRanges, foldEffect, syntaxHighlighting, unfoldCode } from '@codemirror/language';
+import { openSearchPanel, selectMatches, selectNextOccurrence } from '@codemirror/search';
 import { languages } from '@codemirror/language-data';
 import { json } from '@codemirror/lang-json';
 import { yaml } from '@codemirror/lang-yaml';
@@ -21,15 +34,44 @@ import { jsonrepair } from 'jsonrepair';
 import { JSONPath } from 'jsonpath-plus';
 import Ajv from 'ajv';
 import TurndownService from 'turndown';
-import { syntaxHighlighting } from '@codemirror/language';
 import { classHighlighter } from '@lezer/highlight';
-import { autocompletion } from '@codemirror/autocomplete';
+import { acceptCompletion, autocompletion, completionStatus } from '@codemirror/autocomplete';
+import { vim } from '@replit/codemirror-vim';
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import { gfmHeadingId } from 'marked-gfm-heading-id';
 import hljs from 'highlight.js';
 import katex from 'katex';
 import { t, setLocale, getLocaleCode, LANGUAGES } from './i18n.js';
+import { initAISidebar } from './ai/index.js';
+import { createTerminalPanel } from './terminal/panel.js';
+import { openTemplatePicker } from './ui/template-picker.js';
+import { getCommands, registerCommand, registerCommands, runCommand } from './commands/registry.js';
+import { createCommandPalette } from './command-palette/palette.js';
+import { createQuickOpen } from './command-palette/quick-open.js';
+import { gitHunkGutter, updateGitHunkGutter } from './git/hunk-gutter.js';
+import {
+  aheadBehind as gitAheadBehind,
+  currentBranch as gitCurrentBranch,
+  diffAgainstHead as gitDiffAgainstHead,
+  listBranches as gitListBranches,
+  checkoutBranch as gitCheckoutBranch,
+  relativePath as gitRelativePath,
+  revertFile as gitRevertFile,
+  status as gitStatus,
+} from './git/git.js';
+import { analyzeTemplate, findSectionRange, replaceSectionContent, updateChecklistProgressFrontmatter } from './templates/tracker.js';
+import { buildFragmentShareUrl, sharedByteLength, SHARE_GIST_BYTES, SHARE_WARN_BYTES } from '../web/url-sharing.js';
+import {
+  DEFAULT_USER_SNIPPETS,
+  createSnippetCompletionSource,
+  expandSnippetShortcut,
+  getAllSnippetFormats,
+  getSnippetsForFormat,
+  insertSnippet,
+  parseUserSnippets,
+  setUserSnippets,
+} from './snippets/registry.js';
 import {
   builtinThemes, applyThemeColors,
   getSavedThemeId, saveThemeId,
@@ -122,10 +164,12 @@ class LRU {
 let mermaidReady = false;
 let mermaidModule = null;
 const mermaidRenderer = {
-  code(text, lang) {
+  code(tokenOrText, maybeLang) {
+    const text = String(typeof tokenOrText === 'object' ? tokenOrText.text || '' : tokenOrText || '');
+    const lang = typeof tokenOrText === 'object' ? tokenOrText.lang : maybeLang;
     if (lang === 'mermaid') {
       const h = hash32(text);
-      return '<div class="mermaid-block" data-mermaid="' + text.replace(/"/g, '&quot;') + '" data-mermaid-hash="' + h + '">' + text + '</div>';
+      return '<div class="mermaid-block" data-mermaid="' + escapeHtml(text) + '" data-mermaid-hash="' + h + '">' + escapeHtml(text) + '</div>';
     }
     return false;
   },
@@ -149,15 +193,27 @@ const marked = new Marked(
 const contentEl = document.getElementById('content');
 const welcomeEl = document.getElementById('welcome');
 const fileInfoEl = document.getElementById('file-info');
+const templateStatusHost = document.createElement('span');
+templateStatusHost.id = 'template-status-host';
+fileInfoEl?.insertAdjacentElement('afterend', templateStatusHost);
 const workspaceEl = document.getElementById('workspace');
 const editorPaneEl = document.getElementById('editor-pane');
 const previewPaneEl = document.getElementById('preview-pane');
 const dividerEl = document.getElementById('divider');
 const statusCursorEl = document.getElementById('status-cursor');
+const statusVimEl = document.createElement('span');
+statusVimEl.id = 'status-vim-mode';
+statusVimEl.className = 'status-chip hidden';
+statusCursorEl?.insertAdjacentElement('afterend', statusVimEl);
 const statusSelectionEl = document.getElementById('status-selection');
 const statusWordsEl = document.getElementById('status-words');
 const statusReadTimeEl = document.getElementById('status-readtime');
 const statusZoomEl = document.getElementById('status-zoom');
+const statusGitEl = document.createElement('button');
+statusGitEl.id = 'status-git';
+statusGitEl.className = 'status-git hidden';
+statusGitEl.type = 'button';
+statusZoomEl?.insertAdjacentElement('beforebegin', statusGitEl);
 const tabListEl = document.getElementById('tab-list');
 const sidebarEl = document.getElementById('sidebar');
 const fileTreeEl = document.getElementById('file-tree');
@@ -175,6 +231,7 @@ const backlinksContentEl = document.getElementById('backlinks-content');
 // behavior cannot exist on the web at all (OS default-app registration,
 // reveal-in-explorer, auto-updater) is hidden here.
 const IS_WEB = window.formatpad?.platform === 'web';
+const BUILD_TARGET_WEB = process.env.FORMATPAD_WEB === 'true';
 if (IS_WEB) {
   const hideIds = ['btn-set-default', 'ctx-reveal', 'tctx-reveal'];
   hideIds.forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = true; });
@@ -183,7 +240,7 @@ if (IS_WEB) {
 // ==================== Sentry (renderer) ====================
 // Opt-out check: if localStorage["sentry-opt-out"] is truthy, skip init.
 // TODO: expose "Send crash reports" toggle in the Settings UI once one exists.
-if (!IS_WEB && !localStorage.getItem('sentry-opt-out')) {
+if (!BUILD_TARGET_WEB && !IS_WEB && !localStorage.getItem('sentry-opt-out')) {
   try {
     require('@sentry/electron/renderer').init({
       tracesSampleRate: 0.1,
@@ -208,11 +265,20 @@ let tocScrollHandler = null;
 let autoSaveTimer = null;
 let debounceTimer = null;
 let editorMouseDown = false;
+let terminalController = null;
+let aiController = null;
+let commandPalette = null;
+let quickOpen = null;
+let vimEnabled = localStorage.getItem('editor.vim') === 'true';
+let minimapEnabled = localStorage.getItem('editor.minimap') === 'true';
+let zenChordArmed = false;
+let zenChordTimer = null;
 
 // Tab state
 const tabs = [];
 let activeTabId = null;
 let tabIdCounter = 0;
+const closedEditorSessionState = new Map();
 let switchingTabs = false;
 let tabCountTimer = null;
 function trackTabCountThrottled() {
@@ -240,6 +306,17 @@ function normalizeLineEndings(s) {
   return s == null ? '' : String(s).replace(/\r\n?/g, '\n');
 }
 
+function normalizeComparablePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function isPathInsideWorkspace(filePath) {
+  if (!workspacePath || !filePath) return false;
+  const root = normalizeComparablePath(workspacePath);
+  const full = normalizeComparablePath(filePath);
+  return full === root || full.startsWith(root + '/');
+}
+
 // Sidebar state
 let sidebarVisible = true;
 let sidebarActivePanel = 'files';
@@ -247,6 +324,14 @@ let sidebarActivePanel = 'files';
 // Workspace/file tree state
 let workspacePath = localStorage.getItem('fp-workspace-path') || null;
 const expandedPaths = new Set();
+let fileTreeCache = [];
+let gitRepoState = { isRepo: false, statuses: new Map(), branch: null, ahead: null, behind: null, slow: false };
+let gitStatusTimer = null;
+let gitRefreshToken = 0;
+let gitHunkTimer = null;
+let snippetsRefreshTimer = null;
+let userSnippetsPath = null;
+let userSnippetsSource = 'none';
 
 // Search state
 let searchRegex = false;
@@ -545,6 +630,165 @@ function wikiLinkCompletions(context) {
   };
 }
 
+// ==================== Snippets ====================
+const snippetCompletionSource = createSnippetCompletionSource(() => getActiveTab()?.viewType || 'markdown');
+
+function workspaceSnippetPaths() {
+  if (!workspacePath) return null;
+  const sep = workspacePath.includes('\\') ? '\\' : '/';
+  const root = workspacePath.replace(/[\\/]+$/, '');
+  const folder = root + sep + '.formatpad';
+  return { folder, file: folder + sep + 'snippets.json' };
+}
+
+function isUserSnippetPath(filePath) {
+  if (!filePath || !userSnippetsPath) return false;
+  return String(filePath).replace(/\\/g, '/').toLowerCase() === String(userSnippetsPath).replace(/\\/g, '/').toLowerCase();
+}
+
+async function readWorkspaceSnippets() {
+  const paths = workspaceSnippetPaths();
+  if (!paths) return null;
+  const result = await window.formatpad.readFile(paths.file);
+  if (result?.error) return null;
+  return { ...result, source: 'workspace' };
+}
+
+async function readFallbackSnippets() {
+  if (window.formatpad.userSnippets?.read) {
+    const result = await window.formatpad.userSnippets.read();
+    if (!result?.error) return { ...result, source: 'userData' };
+  }
+  const raw = localStorage.getItem('fp-user-snippets');
+  return {
+    filePath: 'localStorage:fp-user-snippets',
+    dirPath: null,
+    content: raw || '{}',
+    source: 'localStorage',
+  };
+}
+
+async function refreshUserSnippets() {
+  try {
+    const result = await readWorkspaceSnippets() || await readFallbackSnippets();
+    userSnippetsPath = result?.filePath || null;
+    userSnippetsSource = result?.source || 'none';
+    const parsed = parseUserSnippets(result?.content || '{}');
+    setUserSnippets(parsed);
+  } catch (err) {
+    console.warn('[snippets] failed to load user snippets', err);
+    setUserSnippets({});
+  }
+}
+
+function scheduleSnippetRefresh(delay = 250) {
+  if (snippetsRefreshTimer) clearTimeout(snippetsRefreshTimer);
+  snippetsRefreshTimer = setTimeout(refreshUserSnippets, delay);
+}
+
+async function ensureWorkspaceSnippetFile() {
+  const paths = workspaceSnippetPaths();
+  if (!paths) return null;
+  await window.formatpad.createFolder(paths.folder).catch(() => {});
+  let result = await window.formatpad.readFile(paths.file);
+  if (result?.error) {
+    await window.formatpad.createFile(paths.file).catch(() => {});
+    await window.formatpad.saveFile(paths.file, DEFAULT_USER_SNIPPETS).catch(() => {});
+    result = await window.formatpad.readFile(paths.file);
+  }
+  return {
+    filePath: paths.file,
+    dirPath: paths.folder,
+    content: result?.content || DEFAULT_USER_SNIPPETS,
+    savedContent: result?.content || DEFAULT_USER_SNIPPETS,
+  };
+}
+
+async function editUserSnippets() {
+  let target = null;
+  if (workspacePath) {
+    target = await ensureWorkspaceSnippetFile();
+  } else if (window.formatpad.userSnippets?.ensure) {
+    const result = await window.formatpad.userSnippets.ensure();
+    if (!result?.error) target = { ...result, savedContent: result.content };
+  } else {
+    const content = localStorage.getItem('fp-user-snippets') || DEFAULT_USER_SNIPPETS;
+    target = { filePath: 'localStorage:fp-user-snippets', dirPath: null, content, savedContent: content, title: 'snippets.json' };
+  }
+  if (!target) return;
+  userSnippetsPath = target.filePath || userSnippetsPath;
+  const tab = createTab(target.filePath, target.dirPath, target.content, target.savedContent, {
+    title: target.title || null,
+    viewType: 'json',
+  });
+  switchToTab(tab.id);
+}
+
+function openSnippetPicker() {
+  const format = getActiveTab()?.viewType || 'markdown';
+  const applicable = getSnippetsForFormat(format);
+  const all = applicable.length ? applicable : getAllSnippetFormats().flatMap(getSnippetsForFormat);
+  const body = document.createElement('div');
+  body.className = 'snippet-picker';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Filter snippets...';
+  const list = document.createElement('div');
+  list.className = 'snippet-picker-list';
+  body.appendChild(input);
+  body.appendChild(list);
+
+  let selected = 0;
+  let filtered = [];
+  const render = () => {
+    const query = input.value.trim().toLowerCase();
+    filtered = all
+      .filter(item => !query || `${item.name} ${item.description} ${item.format}`.toLowerCase().includes(query))
+      .slice(0, 60);
+    selected = Math.max(0, Math.min(selected, filtered.length - 1));
+    list.innerHTML = '';
+    if (!filtered.length) {
+      const empty = document.createElement('div');
+      empty.className = 'snippet-picker-empty';
+      empty.textContent = 'No snippets found.';
+      list.appendChild(empty);
+      return;
+    }
+    filtered.forEach((item, index) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'snippet-picker-item' + (index === selected ? ' selected' : '');
+      btn.innerHTML = `<strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.description || item.format)}</span><kbd>${escapeHtml(item.source)}</kbd>`;
+      btn.addEventListener('mousemove', () => { selected = index; render(); });
+      btn.addEventListener('click', () => accept(index));
+      list.appendChild(btn);
+    });
+  };
+  const accept = (index = selected) => {
+    const item = filtered[index];
+    if (!item) return;
+    closeFmtModal();
+    insertSnippet(editor, item);
+  };
+  input.addEventListener('input', () => { selected = 0; render(); });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); selected = filtered.length ? (selected + 1) % filtered.length : 0; render(); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); selected = filtered.length ? (selected - 1 + filtered.length) % filtered.length : 0; render(); }
+    else if (event.key === 'Enter') { event.preventDefault(); accept(); }
+  });
+  render();
+  openFmtModal({
+    title: 'Insert Snippet...',
+    body,
+    footer: [
+      { label: 'Edit User Snippets', onClick: () => { closeFmtModal(); editUserSnippets(); } },
+      { label: 'Close', onClick: closeFmtModal },
+      { label: 'Insert', primary: true, onClick: () => accept() },
+    ],
+  });
+  setTimeout(() => input.focus(), 0);
+}
+
 // ==================== Format routing ====================
 function getViewType(filePath) {
   const name = (filePath || '').toLowerCase();
@@ -595,6 +839,195 @@ function isSupportedFormat(filename) {
 }
 
 // ==================== CodeMirror Editor ====================
+const vimCompartment = new Compartment();
+const minimapCompartment = new Compartment();
+
+const editorUxKeymap = [
+  {
+    key: 'Tab',
+    run: (view) => {
+      if (expandSnippetShortcut(view, getActiveTab()?.viewType || 'markdown')) return true;
+      if (completionStatus(view.state) === 'active') return acceptCompletion(view);
+      return false;
+    },
+  },
+  { key: 'Mod-Alt-ArrowUp', run: addCursorAbove },
+  { key: 'Mod-Alt-ArrowDown', run: addCursorBelow },
+  { key: 'Mod-d', run: selectNextOccurrence },
+  { key: 'Mod-Shift-l', run: selectMatches },
+  { key: 'Alt-ArrowUp', run: moveLineUp },
+  { key: 'Alt-ArrowDown', run: moveLineDown },
+  { key: 'Shift-Alt-ArrowUp', run: copyLineUp },
+  { key: 'Shift-Alt-ArrowDown', run: copyLineDown },
+  { key: 'Mod-/', run: toggleComment },
+  { key: 'Mod-Shift-/', run: toggleBlockComment },
+  { key: 'Mod-?', run: toggleBlockComment },
+  { key: 'Mod-Shift-[', run: foldCode },
+  { key: 'Mod-Shift-]', run: unfoldCode },
+  { key: 'Mod-{', run: foldCode },
+  { key: 'Mod-}', run: unfoldCode },
+];
+
+const vimStatusExtension = EditorView.domEventHandlers({
+  keydown() { requestAnimationFrame(updateVimStatusBar); return false; },
+  keyup() { requestAnimationFrame(updateVimStatusBar); return false; },
+  focus() { requestAnimationFrame(updateVimStatusBar); return false; },
+});
+
+function getVimExtensions() {
+  return vimEnabled ? [vim({ status: false }), vimStatusExtension] : [];
+}
+
+const minimapExtension = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.view = view;
+    this.raf = 0;
+    this.dom = document.createElement('div');
+    this.dom.className = 'fp-minimap';
+    this.dom.title = 'Click to jump in the document';
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'fp-minimap-canvas';
+    this.dom.appendChild(this.canvas);
+    this.onPointerDown = (event) => this.jump(event);
+    this.dom.addEventListener('pointerdown', this.onPointerDown);
+    this.view.dom.classList.add('fp-minimap-enabled');
+    this.view.dom.appendChild(this.dom);
+    this.scheduleRender();
+  }
+
+  update(update) {
+    if (update.docChanged || update.viewportChanged || update.selectionSet || update.geometryChanged) {
+      this.scheduleRender();
+    }
+  }
+
+  scheduleRender() {
+    if (this.raf) return;
+    this.raf = requestAnimationFrame(() => {
+      this.raf = 0;
+      this.render();
+    });
+  }
+
+  render() {
+    const doc = this.view.state.doc;
+    const width = this.dom.clientWidth || 72;
+    const height = this.view.scrollDOM.clientHeight || this.view.dom.clientHeight || 1;
+    const dpr = window.devicePixelRatio || 1;
+    const canvasWidth = Math.max(1, Math.floor(width * dpr));
+    const canvasHeight = Math.max(1, Math.floor(height * dpr));
+    if (this.canvas.width !== canvasWidth || this.canvas.height !== canvasHeight) {
+      this.canvas.width = canvasWidth;
+      this.canvas.height = canvasHeight;
+      this.canvas.style.width = width + 'px';
+      this.canvas.style.height = height + 'px';
+    }
+
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const styles = getComputedStyle(this.view.dom);
+    const textColor = styles.getPropertyValue('--text-secondary').trim() || 'rgba(160, 166, 190, 0.7)';
+    const accentColor = styles.getPropertyValue('--accent-color').trim() || '#7aa2f7';
+    const gutterColor = styles.getPropertyValue('--border-color').trim() || 'rgba(120, 124, 153, 0.35)';
+    const step = Math.max(1, Math.ceil(doc.lines / Math.max(1, height)));
+    const lineHeight = Math.max(1, height / Math.max(1, doc.lines));
+
+    ctx.fillStyle = gutterColor;
+    ctx.fillRect(0, 0, 1, height);
+    for (let lineNo = 1; lineNo <= doc.lines; lineNo += step) {
+      const line = doc.line(lineNo);
+      const y = Math.floor(((lineNo - 1) / Math.max(1, doc.lines)) * height);
+      const trimmed = line.text.trimStart();
+      ctx.fillStyle = trimmed.startsWith('#') || /^[\]}),;]+$/.test(trimmed) ? accentColor : textColor;
+      ctx.globalAlpha = trimmed ? 0.64 : 0.18;
+      const barWidth = Math.max(3, Math.min(width - 8, (trimmed.length / 120) * (width - 8)));
+      ctx.fillRect(4, y, barWidth, Math.max(1, lineHeight));
+    }
+    ctx.globalAlpha = 1;
+
+    const viewportStart = doc.lineAt(this.view.viewport.from).number;
+    const viewportEnd = doc.lineAt(this.view.viewport.to).number;
+    const top = ((viewportStart - 1) / Math.max(1, doc.lines)) * height;
+    const bottom = (viewportEnd / Math.max(1, doc.lines)) * height;
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.18;
+    ctx.fillRect(0, top, width, Math.max(6, bottom - top));
+    ctx.globalAlpha = 0.62;
+    ctx.strokeStyle = accentColor;
+    ctx.strokeRect(0.5, top + 0.5, width - 1, Math.max(6, bottom - top) - 1);
+    ctx.globalAlpha = 1;
+  }
+
+  jump(event) {
+    event.preventDefault();
+    const rect = this.dom.getBoundingClientRect();
+    const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0;
+    const lineNo = Math.max(1, Math.min(this.view.state.doc.lines, Math.round(ratio * this.view.state.doc.lines)));
+    const line = this.view.state.doc.line(lineNo);
+    this.view.dispatch({
+      selection: { anchor: line.from },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    });
+    this.view.focus();
+  }
+
+  destroy() {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.dom.removeEventListener('pointerdown', this.onPointerDown);
+    this.dom.remove();
+    this.view.dom.classList.remove('fp-minimap-enabled');
+  }
+});
+
+function getMinimapExtensions() {
+  return minimapEnabled ? [minimapExtension] : [];
+}
+
+function getSessionStateKey(filePath) {
+  return filePath ? filePath.replace(/\\/g, '/').toLowerCase() : null;
+}
+
+function cacheClosedEditorSessionState(tab) {
+  const key = getSessionStateKey(tab?.filePath);
+  if (!key) return;
+  const state = tab.id === activeTabId ? editor.state : tab.editorState;
+  const scroller = tab.id === activeTabId ? document.querySelector('.cm-scroller') : null;
+  const folds = [];
+  try {
+    foldedRanges(state).between(0, state.doc.length, (from, to) => folds.push({ from, to }));
+  } catch {}
+  closedEditorSessionState.set(key, {
+    selection: state.selection.toJSON(),
+    folds,
+    scrollTop: {
+      editor: scroller ? scroller.scrollTop : tab.scrollTop?.editor || 0,
+      preview: tab.id === activeTabId ? contentEl.scrollTop : tab.scrollTop?.preview || 0,
+    },
+  });
+  while (closedEditorSessionState.size > 50) {
+    closedEditorSessionState.delete(closedEditorSessionState.keys().next().value);
+  }
+}
+
+function restoreEditorSessionState(state, filePath) {
+  const cached = closedEditorSessionState.get(getSessionStateKey(filePath));
+  if (!cached) return state;
+  const spec = {};
+  try { spec.selection = EditorSelection.fromJSON(cached.selection); } catch {}
+  const folds = (cached.folds || [])
+    .filter(({ from, to }) => Number.isInteger(from) && Number.isInteger(to) && from >= 0 && to <= state.doc.length && from < to)
+    .map((range) => foldEffect.of(range));
+  if (folds.length) spec.effects = folds;
+  return Object.keys(spec).length ? state.update(spec).state : state;
+}
+
+function getRestoredScrollTop(filePath) {
+  return closedEditorSessionState.get(getSessionStateKey(filePath))?.scrollTop || { editor: 0, preview: 0 };
+}
+
 function createEditorState(content, viewType = 'markdown') {
   const langExt = getLangExtension(viewType);
   return EditorState.create({
@@ -603,8 +1036,9 @@ function createEditorState(content, viewType = 'markdown') {
       basicSetup,
       syntaxHighlighting(classHighlighter),
       ...(langExt ? [langExt] : []),
-      autocompletion({ override: [wikiLinkCompletions], activateOnTyping: true }),
+      autocompletion({ override: [wikiLinkCompletions, snippetCompletionSource], activateOnTyping: true }),
       EditorView.lineWrapping,
+      gitHunkGutter,
       EditorView.domEventHandlers({
         drop(e) {
           const linkName = e.dataTransfer.getData('application/x-fp-link');
@@ -634,11 +1068,15 @@ function createEditorState(content, viewType = 'markdown') {
           syncPreviewToEditor();
         }
         if (update.selectionSet && !editorMouseDown) updateStatusBar();
+        if (update.docChanged || update.selectionSet) updateVimStatusBar();
       }),
+      Prec.highest(keymap.of(editorUxKeymap)),
       keymap.of([
         { key: 'Mod-s', run: () => { saveFile(); return true; } },
         { key: 'Mod-Shift-s', run: () => { saveFileAs(); return true; } },
       ]),
+      vimCompartment.of(getVimExtensions()),
+      minimapCompartment.of(getMinimapExtensions()),
     ],
   });
 }
@@ -647,6 +1085,74 @@ const editor = new EditorView({
   state: createEditorState(''),
   parent: document.getElementById('editor'),
 });
+document.getElementById('editor').addEventListener('contextmenu', () => {
+  if (getActiveTab()?.viewType === 'markdown') {
+    window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', { detail: { format: 'markdown', scope: getEditorSelectionText() ? 'selection' : 'document' } }));
+  }
+});
+
+function applyEditorUxCompartments() {
+  if (!editor?.state) return;
+  editor.dispatch({
+    effects: [
+      vimCompartment.reconfigure(getVimExtensions()),
+      minimapCompartment.reconfigure(getMinimapExtensions()),
+    ],
+  });
+  updateVimStatusBar();
+}
+
+function setVimEnabled(enabled) {
+  vimEnabled = !!enabled;
+  localStorage.setItem('editor.vim', vimEnabled ? 'true' : 'false');
+  applyEditorUxCompartments();
+  editor.focus();
+}
+
+function setMinimapEnabled(enabled) {
+  minimapEnabled = !!enabled;
+  localStorage.setItem('editor.minimap', minimapEnabled ? 'true' : 'false');
+  applyEditorUxCompartments();
+}
+
+function updateVimStatusBar() {
+  if (!statusVimEl) return;
+  statusVimEl.classList.toggle('hidden', !vimEnabled);
+  if (!vimEnabled) {
+    statusVimEl.textContent = '';
+    return;
+  }
+  const vimState = editor?.cm?.state?.vim;
+  let mode = vimState?.mode || (vimState?.visualMode ? 'visual' : vimState?.insertMode ? 'insert' : 'normal');
+  if (vimState?.visualBlock) mode = 'visual block';
+  else if (vimState?.visualLine) mode = 'visual line';
+  const label = String(mode || 'normal').replace(/\s+.*/, '').toUpperCase();
+  statusVimEl.textContent = label;
+  statusVimEl.title = 'Vim mode is on. Use the command palette to toggle Vim mode if normal-mode keys are capturing input.';
+}
+
+function updateZenLayoutClass() {
+  const tab = getActiveTab();
+  const proseTypes = new Set(['markdown', 'txt', 'text', 'log']);
+  document.body.classList.toggle('zen-prose', document.body.classList.contains('zen-mode') && proseTypes.has(tab?.viewType || 'markdown'));
+}
+
+function setZenMode(enabled) {
+  document.body.classList.toggle('zen-mode', !!enabled);
+  updateZenLayoutClass();
+  if (enabled) editor.focus();
+}
+
+function toggleZenMode() {
+  setZenMode(!document.body.classList.contains('zen-mode'));
+}
+
+function runEditorCommand(command) {
+  editor.focus();
+  const handled = command(editor);
+  updateStatusBar();
+  return handled;
+}
 
 // Bidirectional scroll sync uses a pair of one-shot blocks so whichever
 // direction is actively driving briefly silences the other.
@@ -859,25 +1365,35 @@ function findTabByPath(filePath) {
   return tabs.find(tb => tb.filePath && tb.filePath.replace(/\\/g, '/').toLowerCase() === normalized) || null;
 }
 
-function createTab(filePath, dirPath, content, savedContent) {
+function getTabDisplayName(tab) {
+  return tab?.filePath ? tab.filePath.split(/[/\\]/).pop() : (tab?.title || t('untitled'));
+}
+
+function createTab(filePath, dirPath, content, savedContent, options = {}) {
   const existing = filePath ? findTabByPath(filePath) : null;
   if (existing) {
     switchToTab(existing.id);
     return existing;
   }
-  const viewType = getViewType(filePath);
+  const tabName = options.title || filePath;
+  const viewType = options.viewType || getViewType(tabName);
   const normContent = normalizeLineEndings(content);
   const normSaved = savedContent !== undefined ? normalizeLineEndings(savedContent) : normContent;
+  const editorState = restoreEditorSessionState(createEditorState(normContent, viewType), filePath);
+  const scrollTop = getRestoredScrollTop(filePath);
   const tab = {
     id: 'tab-' + (++tabIdCounter),
     filePath: filePath || null,
     dirPath: dirPath || null,
+    title: options.title || null,
+    source: options.source || null,
+    sourceUrl: options.sourceUrl || null,
     viewType,
     pinned: false,
     lastSavedContent: normSaved,
-    isModified: normContent !== normSaved,
-    editorState: createEditorState(normContent, viewType),
-    scrollTop: { editor: 0, preview: 0 },
+    isModified: options.forceUnsaved === true || normContent !== normSaved,
+    editorState,
+    scrollTop,
     lastAutoSavedContent: null,
     openedAt: Date.now(),
     mdCache: new LRU(8),
@@ -912,6 +1428,8 @@ function switchToTab(tabId) {
   switchingTabs = true;
   editor.setState(newTab.editorState);
   switchingTabs = false;
+  applyEditorUxCompartments();
+  newTab.editorState = editor.state;
 
   // The rAF scroll restore below will fire a preview scroll event. Without
   // this block the capture-phase listener would treat it as user intent and
@@ -930,6 +1448,8 @@ function switchToTab(tabId) {
   renderTabBar();
   updateTitle();
   updateStatusBar();
+  updateZenLayoutClass();
+  refreshGitHunks();
   welcomeEl.classList.add('hidden');
   // Sidebar follows the active tab regardless of viewType — renderPreview only
   // refreshes the outline for markdown, so structured-view tabs would otherwise
@@ -937,18 +1457,8 @@ function switchToTab(tabId) {
   buildTOC();
   if (sidebarActivePanel === 'backlinks') refreshBacklinks();
 
-  // Auto-detect workspace from file. On desktop, dirPath is the real folder
-  // containing the opened file. On web, single-file opens return dirPath=null
-  // (browser can't attach a directory to a file picked via <input>), so this
-  // block only fires when the user explicitly chose Open Folder — which
-  // workspacePath already reflects.
-  if (newTab.dirPath && !workspacePath) {
-    workspacePath = newTab.dirPath;
-    localStorage.setItem('fp-workspace-path', workspacePath);
-    loadFileTree();
-    window.formatpad.watchDirectory(workspacePath);
-    window.formatpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
-  }
+  // RB-1: opening one file grants that file only. Workspace authority comes
+  // from the main process after Open Folder or trusted restore.
 }
 
 async function closeTab(tabId) {
@@ -975,6 +1485,7 @@ async function closeTab(tabId) {
     track('file_quick_close', { format: tab.viewType, duration_sec: String(Math.round(durationSec)) });
   }
 
+  cacheClosedEditorSessionState(tab);
   const idx = tabs.indexOf(tab);
   tabs.splice(idx, 1);
   trackTabCountThrottled();
@@ -984,6 +1495,9 @@ async function closeTab(tabId) {
     switchingTabs = true;
     editor.setState(createEditorState(''));
     switchingTabs = false;
+    updateVimStatusBar();
+    updateZenLayoutClass();
+    updateGitHunkGutter(editor, []);
     contentEl.innerHTML = '';
     if (tocScrollHandler) { contentEl.removeEventListener('scroll', tocScrollHandler); tocScrollHandler = null; }
     tocNav.innerHTML = '';
@@ -1014,7 +1528,8 @@ function renderTabBar() {
     el.className = 'tab-item'
       + (tab.id === activeTabId ? ' active' : '')
       + (tab.isModified ? ' modified' : '')
-      + (tab.pinned ? ' pinned' : '');
+      + (tab.pinned ? ' pinned' : '')
+      + (tab.source ? ' source-' + tab.source : '');
     el.draggable = !tab.pinned;
     el.dataset.tabId = tab.id;
 
@@ -1026,9 +1541,11 @@ function renderTabBar() {
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'tab-name';
-    const name = tab.filePath ? tab.filePath.split(/[/\\]/).pop() : t('untitled');
+    const name = getTabDisplayName(tab);
     nameSpan.textContent = name;
-    nameSpan.title = tab.filePath || t('untitled');
+    nameSpan.title = tab.sourceUrl
+      ? `${name}\nUnsaved (from URL)\n${tab.sourceUrl}`
+      : (tab.filePath || t('untitled'));
 
     const pinBtn = document.createElement('button');
     pinBtn.className = 'tab-pin-btn';
@@ -1128,31 +1645,163 @@ function onEditorChange() {
   const wasModified = tab.isModified;
   tab.isModified = content !== tab.lastSavedContent;
   tab.editorState = editor.state;
+  renderTemplateStatusChip();
   if (wasModified !== tab.isModified) {
     updateTitle();
     renderTabBar();
   }
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => renderPreview(content), 200);
+  scheduleGitHunkRefresh();
 }
 
 function updateTitle() {
   const tab = getActiveTab();
+  const shareBtn = document.getElementById('btn-share');
+  if (shareBtn) {
+    shareBtn.hidden = !IS_WEB;
+    shareBtn.disabled = !tab;
+  }
   if (!tab) {
     fileInfoEl.textContent = '';
     fileInfoEl.title = '';
+    renderTemplateStatusChip();
     window.formatpad.setTitle('FormatPad');
     return;
   }
-  const name = tab.filePath ? tab.filePath.split(/[/\\]/).pop() : t('untitled');
-  fileInfoEl.textContent = (tab.isModified ? '• ' : '') + name;
-  fileInfoEl.title = tab.filePath || '';
-  window.formatpad.setTitle((tab.isModified ? '• ' : '') + name + ' - FormatPad');
+  const name = getTabDisplayName(tab);
+  const sourceLabel = tab.source ? ' - Unsaved (from URL)' : '';
+  fileInfoEl.textContent = (tab.isModified ? '* ' : '') + name + sourceLabel;
+  fileInfoEl.title = tab.sourceUrl || tab.filePath || '';
+  renderTemplateStatusChip();
+  window.formatpad.setTitle((tab.isModified ? '* ' : '') + name + ' - FormatPad');
 }
 
 function showSaveFlash() {
   fileInfoEl.classList.add('saved-flash');
   setTimeout(() => fileInfoEl.classList.remove('saved-flash'), 1500);
+}
+
+function activeTemplateAnalysis() {
+  const tab = getActiveTab();
+  if (!tab || tab.viewType !== 'markdown') return null;
+  const content = tab.id === activeTabId ? editor.state.doc.toString() : tab.editorState?.doc?.toString?.() || '';
+  return analyzeTemplate(content);
+}
+
+function openTemplateStatusPopover(analysis) {
+  if (!analysis) return;
+  const body = document.createElement('div');
+  body.className = 'template-status-popover';
+  const title = document.createElement('h3');
+  title.textContent = analysis.label;
+  const summary = document.createElement('p');
+  summary.textContent = `${analysis.completedCount}/${analysis.totalCount} required sections complete. ${analysis.uncheckedCount} unchecked tasks.`;
+  body.append(title, summary);
+
+  const list = document.createElement('div');
+  list.className = 'template-section-list';
+  for (const section of analysis.requiredSections) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'template-section-row';
+    const missing = analysis.missingSections.includes(section);
+    row.innerHTML = `<span>${missing ? '!' : '✓'}</span><strong>${section}</strong><small>${missing ? 'Needs content' : 'Looks filled'}</small>`;
+    row.addEventListener('click', () => {
+      closeFmtModal();
+      window.dispatchEvent(new CustomEvent('formatpad-ai-fill-template-section', { detail: { section } }));
+    });
+    list.appendChild(row);
+  }
+  body.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'template-popover-actions';
+  if (analysis.templateId === 'task-list') {
+    for (const label of ['Import from GitHub Issues', 'Import from Linear', 'Import from Task Master']) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.addEventListener('click', () => notifyFormatError('Templates', new Error('Enable the matching MCP server in AI > MCP. Phase 1 exposes the hook; full import mapping is Phase 2.')));
+      actions.appendChild(btn);
+    }
+  }
+  if (analysis.templateId === 'handover') {
+    const handover = document.createElement('button');
+    handover.type = 'button';
+    handover.textContent = 'Load into next AI chat';
+    handover.addEventListener('click', () => {
+      closeFmtModal();
+      window.dispatchEvent(new CustomEvent('formatpad-ai-load-handover', {
+        detail: { content: editor.state.doc.toString() },
+      }));
+    });
+    actions.appendChild(handover);
+  }
+  if (actions.childElementCount) body.appendChild(actions);
+
+  openFmtModal({
+    title: 'Template status',
+    body,
+    footer: [
+      {
+        label: 'Complete remaining sections',
+        primary: true,
+        onClick: () => {
+          closeFmtModal();
+          window.dispatchEvent(new CustomEvent('formatpad-ai-complete-template', {
+            detail: { sections: analysis.missingSections },
+          }));
+        },
+      },
+      { label: 'Close', onClick: closeFmtModal },
+    ],
+  });
+}
+
+function renderTemplateStatusChip() {
+  if (!templateStatusHost) return;
+  templateStatusHost.innerHTML = '';
+  const analysis = activeTemplateAnalysis();
+  if (!analysis) return;
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'template-status-chip' + (analysis.missingSections.length ? ' warning' : '');
+  chip.textContent = `${analysis.missingSections.length ? '! ' : ''}${analysis.template.label} ${analysis.completedCount}/${analysis.totalCount} sections · ${analysis.uncheckedCount} unchecked`;
+  chip.title = 'Template status';
+  chip.addEventListener('click', () => openTemplateStatusPopover(analysis));
+  templateStatusHost.appendChild(chip);
+}
+
+function prepareTemplateContentForSave(content) {
+  const analysis = analyzeTemplate(content);
+  if (!analysis) return content;
+  return updateChecklistProgressFrontmatter(content, analysis.checklistProgress);
+}
+
+function createTabFromTemplate(file) {
+  const tab = createTab(null, null, file.content || '', '', { forceUnsaved: true });
+  tab.title = file.filename || 'template.md';
+  tab.viewType = file.format || 'markdown';
+  tab.editorState = createEditorState(file.content || '', tab.viewType);
+  tab.isModified = true;
+  editor.setState(tab.editorState);
+  renderPreview(file.content || '');
+  updateFormatBar(tab.viewType);
+  updateTitle();
+  renderTabBar();
+  editor.focus();
+  track('template_create', { template: file.template?.id || 'unknown' });
+  return tab;
+}
+
+function openNewFromTemplate() {
+  openTemplatePicker({
+    openModal: openFmtModal,
+    closeModal: closeFmtModal,
+    notify: notifyFormatError,
+    onCreate: createTabFromTemplate,
+  });
 }
 
 // ==================== Preview ====================
@@ -1234,6 +1883,7 @@ function renderPreview(content) {
 
   if (viewType === 'html')    { renderHTMLPreview(content); return; }
   if (viewType === 'mermaid') { renderMermaidPreview(content); return; }
+  if (viewType === 'git-diff') { renderGitDiffPreview(); return; }
   if (viewType === 'json')    { renderJSONPreview(content); return; }
   if (viewType === 'jsonl')   { renderJSONLPreview(content); return; }
   if (viewType === 'yaml')    { renderYAMLPreview(content); return; }
@@ -1261,6 +1911,22 @@ function renderPreview(content) {
     }
   }
   contentEl.innerHTML = parsedHtml;
+
+  const templateAnalysis = activeTemplateAnalysis();
+  if (templateAnalysis) {
+    contentEl.querySelectorAll('h2, h3, h4, h5, h6').forEach((heading) => {
+      const text = heading.textContent?.replace(/\s+#$/, '').trim();
+      if (!text || !templateAnalysis.requiredSections.includes(text)) return;
+      heading.classList.add('template-heading');
+      heading.title = 'Right-click to ask AI to fill this section';
+      heading.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('formatpad-ai-fill-template-section', {
+          detail: { section: text },
+        }));
+      });
+    });
+  }
 
   contentEl.querySelectorAll('a[href]').forEach((link) => {
     const href = link.getAttribute('href');
@@ -1373,6 +2039,10 @@ function renderMermaidPreview(content) {
     '<div class="mermaid-block" data-mermaid="' + esc + '">' + escapeHtml(content) + '</div>';
   renderMermaidBlocks().then(() => {
     const block = contentEl.querySelector('.mermaid-block');
+    block?.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', { detail: { format: 'mermaid', scope: 'node' } }));
+    });
     const svg = block?.querySelector('svg');
     if (!svg) return;
     // Snapshot original SVG string before svgPanZoom wraps it in a group.
@@ -2372,6 +3042,350 @@ sidebarResizeEl.addEventListener('dblclick', () => {
   localStorage.removeItem('fp-sidebar-width');
 });
 
+// ==================== Git UI ====================
+function gitBadgeForPath(filePath) {
+  if (!gitRepoState.isRepo || !workspacePath || !filePath) return null;
+  return gitRepoState.statuses.get(gitRelativePath(workspacePath, filePath)) || null;
+}
+
+function appendGitBadge(itemEl, filePath) {
+  const badge = gitBadgeForPath(filePath);
+  if (!badge) return;
+  const node = document.createElement('span');
+  node.className = `git-badge git-badge-${badge === '?' ? 'unknown' : badge.toLowerCase()}`;
+  node.textContent = badge;
+  node.title = {
+    M: 'Modified',
+    A: 'Added',
+    D: 'Deleted',
+    U: 'Untracked',
+    '?': 'Git status pending',
+  }[badge] || 'Git status';
+  itemEl.appendChild(node);
+}
+
+function updateGitStatusBar() {
+  if (!statusGitEl) return;
+  if (!gitRepoState.isRepo || !gitRepoState.branch) {
+    statusGitEl.classList.add('hidden');
+    statusGitEl.textContent = '';
+    return;
+  }
+  let label = `Git: ${gitRepoState.branch}`;
+  if (Number.isInteger(gitRepoState.ahead) && Number.isInteger(gitRepoState.behind)) {
+    const parts = [];
+    if (gitRepoState.ahead > 0) parts.push(`↑${gitRepoState.ahead}`);
+    if (gitRepoState.behind > 0) parts.push(`↓${gitRepoState.behind}`);
+    if (parts.length) label += ` ${parts.join(' ')}`;
+  }
+  statusGitEl.textContent = label;
+  statusGitEl.title = 'Open Git commands';
+  statusGitEl.classList.remove('hidden');
+}
+
+function showGitSlowBanner() {
+  if (!workspacePath || !fileTreeEl) return;
+  let banner = fileTreeEl.querySelector('.git-slow-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.className = 'git-slow-banner';
+    banner.textContent = 'Git status load is slow - scanning...';
+    fileTreeEl.prepend(banner);
+  }
+}
+
+function clearGitSlowBanner() {
+  fileTreeEl?.querySelector('.git-slow-banner')?.remove();
+}
+
+function scheduleGitRefresh(delay = 500) {
+  if (gitStatusTimer) clearTimeout(gitStatusTimer);
+  gitStatusTimer = setTimeout(() => refreshGitStatus(), delay);
+}
+
+async function refreshGitStatus() {
+  if (!workspacePath) {
+    gitRepoState = { isRepo: false, statuses: new Map(), branch: null, ahead: null, behind: null, slow: false };
+    updateGitStatusBar();
+    return;
+  }
+  const token = ++gitRefreshToken;
+  let slowTimer = setTimeout(() => {
+    if (token === gitRefreshToken) {
+      gitRepoState = { ...gitRepoState, slow: true };
+      showGitSlowBanner();
+    }
+  }, 3000);
+  try {
+    const [state, branchInfo] = await Promise.all([
+      gitStatus(workspacePath),
+      gitAheadBehind(workspacePath),
+    ]);
+    if (token !== gitRefreshToken) return;
+    clearTimeout(slowTimer);
+    slowTimer = null;
+    clearGitSlowBanner();
+    gitRepoState = {
+      isRepo: !!state?.isRepo,
+      statuses: state?.statuses || new Map(),
+      branch: branchInfo?.branch || (state?.isRepo ? await gitCurrentBranch(workspacePath) : null),
+      ahead: branchInfo?.ahead ?? null,
+      behind: branchInfo?.behind ?? null,
+      slow: false,
+    };
+    updateGitStatusBar();
+    if (fileTreeCache.length) renderFileTree(fileTreeCache, 0);
+    refreshGitHunks();
+  } catch (err) {
+    if (token !== gitRefreshToken) return;
+    if (slowTimer) clearTimeout(slowTimer);
+    clearGitSlowBanner();
+    gitRepoState = { isRepo: false, statuses: new Map(), branch: null, ahead: null, behind: null, slow: false };
+    updateGitStatusBar();
+    console.warn('[git] status refresh failed', err);
+  }
+}
+
+function scheduleGitHunkRefresh(delay = 350) {
+  if (gitHunkTimer) clearTimeout(gitHunkTimer);
+  gitHunkTimer = setTimeout(refreshGitHunks, delay);
+}
+
+async function refreshGitHunks() {
+  const tab = getActiveTab();
+  if (!gitRepoState.isRepo || !workspacePath || !tab?.filePath) {
+    updateGitHunkGutter(editor, []);
+    return;
+  }
+  try {
+    const diff = await gitDiffAgainstHead(workspacePath, tab.filePath, editor.state.doc.toString());
+    updateGitHunkGutter(editor, diff.hunks);
+  } catch (err) {
+    updateGitHunkGutter(editor, []);
+    console.warn('[git] hunk gutter refresh failed', err);
+  }
+}
+
+function buildHunkRevertChange(doc, hunk) {
+  const oldLines = Array.isArray(hunk?.oldLines) ? hunk.oldLines : [];
+  const newLineCount = Math.max(0, Number(hunk?.newLinesCount || 0));
+  const newStart = Math.max(1, Number(hunk?.newStart || 1));
+
+  if (newLineCount === 0) {
+    if (!oldLines.length) return null;
+    if (doc.length === 0) {
+      return { from: 0, to: 0, insert: oldLines.join('\n') };
+    }
+    if (newStart > doc.lines) {
+      const prefix = doc.toString().endsWith('\n') ? '' : '\n';
+      return { from: doc.length, to: doc.length, insert: prefix + oldLines.join('\n') };
+    }
+    const line = doc.line(Math.max(1, Math.min(doc.lines, newStart)));
+    return { from: line.from, to: line.from, insert: oldLines.join('\n') + '\n' };
+  }
+
+  const fromLine = Math.max(1, Math.min(doc.lines, newStart));
+  const toLineNumber = Math.max(fromLine, Math.min(doc.lines, fromLine + newLineCount - 1));
+  const first = doc.line(fromLine);
+  const last = doc.line(toLineNumber);
+  const includesTrailingBreak = toLineNumber < doc.lines;
+  let from = first.from;
+  let to = last.to + (includesTrailingBreak ? 1 : 0);
+  let insert = oldLines.join('\n');
+
+  if (oldLines.length && includesTrailingBreak) insert += '\n';
+  if (!oldLines.length && !includesTrailingBreak && fromLine > 1) {
+    from = doc.line(fromLine - 1).to;
+  }
+  return { from, to, insert };
+}
+
+async function revertGitHunk(hunk) {
+  const tab = getActiveTab();
+  if (!hunk || !tab?.filePath) return;
+  const ok = window.confirm('Revert this hunk to HEAD?');
+  if (!ok) return;
+  const doc = editor.state.doc;
+  const change = buildHunkRevertChange(doc, hunk);
+  if (!change) return;
+  editor.dispatch({
+    changes: change,
+    selection: { anchor: change.from + change.insert.length },
+  });
+  tab.isModified = editor.state.doc.toString() !== tab.lastSavedContent;
+  updateTitle();
+  renderTabBar();
+  scheduleGitRefresh(0);
+}
+
+function renderGitDiffPreview() {
+  const tab = getActiveTab();
+  const diff = tab?.gitDiff;
+  contentEl.innerHTML = '';
+  if (!diff) {
+    contentEl.innerHTML = '<div class="preview-placeholder">No Git diff data.</div>';
+    return;
+  }
+  const panel = document.createElement('div');
+  panel.className = 'git-diff-panel';
+  const rows = [];
+  for (const op of diff.ops || []) {
+    if (op.op === 'equal') {
+      rows.push(`<div class="git-diff-line"><span>${escapeHtml(String(op.oldLine || ''))}</span><span>${escapeHtml(String(op.newLine || ''))}</span><code>${escapeHtml(op.text || '')}</code></div>`);
+    } else if (op.op === 'del') {
+      rows.push(`<div class="git-diff-line deleted"><span>${escapeHtml(String(op.oldLine || ''))}</span><span></span><code>${escapeHtml(op.text || '')}</code></div>`);
+    } else {
+      rows.push(`<div class="git-diff-line added"><span></span><span>${escapeHtml(String(op.newLine || ''))}</span><code>${escapeHtml(op.text || '')}</code></div>`);
+    }
+  }
+  panel.innerHTML = `
+    <div class="git-diff-head">
+      <strong>${escapeHtml(diff.filepath || 'Git diff')}</strong>
+      <span>HEAD vs working tree</span>
+    </div>
+    <div class="git-diff-grid">
+      <div class="git-diff-label">HEAD</div>
+      <div class="git-diff-label">Working tree</div>
+      <div class="git-diff-body">${rows.join('')}</div>
+    </div>
+  `;
+  contentEl.appendChild(panel);
+}
+
+async function showGitDiffForActiveFile() {
+  const tab = getActiveTab();
+  if (!workspacePath || !tab?.filePath) return;
+  const diff = await gitDiffAgainstHead(workspacePath, tab.filePath, editor.state.doc.toString());
+  const diffTab = createTab(null, null, '', '', {
+    title: `Diff: ${getTabDisplayName(tab)}`,
+    viewType: 'git-diff',
+    forceUnsaved: false,
+  });
+  diffTab.gitDiff = diff;
+  lastRendered = { tabId: null, viewType: null, content: null };
+  renderPreview('');
+  updateFormatBar('git-diff');
+}
+
+async function revertGitCurrentFile() {
+  const tab = getActiveTab();
+  if (!workspacePath || !tab?.filePath) return;
+  const ok = window.confirm(`Revert "${getTabDisplayName(tab)}" to HEAD?`);
+  if (!ok) return;
+  await gitRevertFile(workspacePath, tab.filePath);
+  const result = await window.formatpad.readFile(tab.filePath);
+  if (!result?.error) {
+    const content = normalizeLineEndings(result.content);
+    tab.lastSavedContent = content;
+    tab.isModified = false;
+    tab.editorState = createEditorState(content, tab.viewType);
+    editor.setState(tab.editorState);
+    renderPreview(content);
+    renderTabBar();
+    updateTitle();
+  }
+  scheduleGitRefresh(0);
+}
+
+function syncActiveTabSnapshot() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  tab.editorState = editor.state;
+  tab.isModified = editor.state.doc.toString() !== tab.lastSavedContent;
+}
+
+function getOpenWorkspaceFileTabs() {
+  syncActiveTabSnapshot();
+  return tabs.filter(tab => tab.filePath && isPathInsideWorkspace(tab.filePath));
+}
+
+async function reloadOpenWorkspaceTabsAfterCheckout(previousBranch) {
+  const workspaceTabs = getOpenWorkspaceFileTabs();
+  for (const tab of workspaceTabs) {
+    if (tab.isModified) continue;
+    const oldPath = tab.filePath;
+    const result = await window.formatpad.readFile(oldPath);
+    if (result?.error) {
+      const oldContent = tab.editorState?.doc?.toString?.() || '';
+      tab.title = `${getTabDisplayName(tab)} (${previousBranch || 'previous branch'})`;
+      tab.source = 'git-checkout';
+      tab.sourceUrl = oldPath;
+      tab.filePath = null;
+      tab.dirPath = null;
+      tab.lastSavedContent = '';
+      tab.isModified = true;
+      tab.editorState = createEditorState(oldContent, tab.viewType);
+    } else {
+      const content = normalizeLineEndings(result.content);
+      tab.lastSavedContent = content;
+      tab.isModified = false;
+      tab.editorState = createEditorState(content, tab.viewType);
+    }
+
+    if (tab.id === activeTabId) {
+      switchingTabs = true;
+      editor.setState(tab.editorState);
+      switchingTabs = false;
+      renderPreview(editor.state.doc.toString());
+      updateFormatBar(tab.viewType);
+    }
+  }
+  renderTabBar();
+  updateTitle();
+  refreshGitHunks();
+}
+
+async function checkoutGitBranchSafely(branch) {
+  if (!workspacePath || !branch || branch === gitRepoState.branch) return;
+  const dirtyTabs = getOpenWorkspaceFileTabs().filter(tab => tab.isModified);
+  if (dirtyTabs.length) {
+    const names = dirtyTabs.slice(0, 5).map(getTabDisplayName).join(', ');
+    const suffix = dirtyTabs.length > 5 ? `, and ${dirtyTabs.length - 5} more` : '';
+    alert(`Save or close modified workspace tabs before switching branches: ${names}${suffix}`);
+    return;
+  }
+
+  const previousBranch = gitRepoState.branch;
+  const ok = window.confirm(`Checkout "${branch}"? Open workspace tabs will be reloaded from the target branch.`);
+  if (!ok) return;
+  await gitCheckoutBranch(workspacePath, branch);
+  await loadFileTree();
+  await reloadOpenWorkspaceTabsAfterCheckout(previousBranch);
+  scheduleGitRefresh(0);
+}
+
+async function openGitBranchSwitcher() {
+  if (!workspacePath) return;
+  const branches = await gitListBranches(workspacePath);
+  const body = document.createElement('div');
+  body.className = 'git-branch-list';
+  if (!branches.length) {
+    body.textContent = 'No branches found.';
+  } else {
+    for (const branch of branches) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = branch;
+      btn.className = branch === gitRepoState.branch ? 'active' : '';
+      btn.addEventListener('click', async () => {
+        closeFmtModal();
+        await checkoutGitBranchSafely(branch);
+      });
+      body.appendChild(btn);
+    }
+  }
+  openFmtModal({
+    title: 'Git: Open Branch Switcher',
+    body,
+    footer: [{ label: 'Close', primary: true, onClick: closeFmtModal }],
+  });
+}
+
+statusGitEl?.addEventListener('click', () => commandPalette?.open('Git: '));
+document.getElementById('editor')?.addEventListener('formatpad-git-revert-hunk', (event) => {
+  revertGitHunk(event.detail?.hunk).catch(err => notifyFormatError('Git', err));
+});
+
 // ==================== File Tree ====================
 async function openFolder() {
   const folderPath = await window.formatpad.openFolderDialog();
@@ -2382,17 +3396,22 @@ async function openFolder() {
     await loadFileTree();
     window.formatpad.watchDirectory(folderPath);
     window.formatpad.buildLinkIndex(folderPath).then(() => refreshFileNameCache());
+    scheduleGitRefresh(0);
+    scheduleSnippetRefresh(0);
     if (!sidebarVisible) showSidebar('files');
   }
 }
 
 async function loadFileTree() {
   if (!workspacePath) {
+    fileTreeCache = [];
     fileTreeEl.innerHTML = `<div class="tree-empty">${t('sidebar.openFolder')}</div>`;
     return;
   }
   const tree = await window.formatpad.readDirectory(workspacePath);
+  fileTreeCache = tree || [];
   renderFileTree(tree, 0);
+  scheduleGitRefresh(0);
 }
 
 function renderFileTree(items, depth) {
@@ -2459,6 +3478,7 @@ function renderFileTree(items, depth) {
       itemEl.innerHTML =
         '<span class="tree-item-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75C2 .784 2.784 0 3.75 0Z"/></svg></span>' +
         `<span class="tree-item-name" style="${isSupported ? '' : 'opacity:0.5'}">${escapeHtml(item.name)}</span>`;
+      appendGitBadge(itemEl, item.path);
 
       if (isSupported) {
         itemEl.addEventListener('click', () => openFileInTab(item.path));
@@ -2533,6 +3553,7 @@ function renderSubTree(items, depth, container) {
       itemEl.innerHTML =
         '<span class="tree-item-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75C2 .784 2.784 0 3.75 0Z"/></svg></span>' +
         `<span class="tree-item-name" style="${isSupported ? '' : 'opacity:0.5'}">${escapeHtml(item.name)}</span>`;
+      appendGitBadge(itemEl, item.path);
       if (isSupported) {
         itemEl.addEventListener('click', () => openFileInTab(item.path));
       }
@@ -2581,6 +3602,8 @@ let linkIndexRefreshTimer = null;
 window.formatpad.onDirectoryChanged(() => {
   if (fileTreeRefreshTimer) clearTimeout(fileTreeRefreshTimer);
   fileTreeRefreshTimer = setTimeout(loadFileTree, 500);
+  scheduleGitRefresh(500);
+  scheduleSnippetRefresh(500);
   if (linkIndexRefreshTimer) clearTimeout(linkIndexRefreshTimer);
   linkIndexRefreshTimer = setTimeout(() => {
     if (workspacePath) window.formatpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
@@ -2854,15 +3877,314 @@ function renderSearchResults(results) {
 
 async function openSearchResult(filePath, lineNumber) {
   await openFileInTab(filePath);
-  requestAnimationFrame(() => {
-    const lineCount = editor.state.doc.lines;
-    const line = editor.state.doc.line(Math.min(lineNumber, lineCount));
-    editor.dispatch({
-      selection: { anchor: line.from },
-      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
-    });
-    editor.focus();
+  requestAnimationFrame(() => jumpToLine(lineNumber));
+}
+
+function jumpToLine(lineNumber) {
+  const n = Math.max(1, Math.min(parseInt(lineNumber, 10) || 1, editor.state.doc.lines));
+  const line = editor.state.doc.line(n);
+  editor.dispatch({
+    selection: { anchor: line.from },
+    effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
   });
+  editor.focus();
+}
+
+function findSymbolLine(symbol) {
+  const needle = String(symbol || '').trim().toLowerCase();
+  if (!needle) return null;
+  const tab = getActiveTab();
+  const lines = editor.state.doc.toString().replace(/\r\n?/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    let label = '';
+    if (tab?.viewType === 'markdown') {
+      const heading = raw.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+      if (heading) label = heading[1];
+    } else {
+      const key = raw.match(/^\s*"([^"]+)"\s*:/)
+        || raw.match(/^\s*([A-Za-z0-9_.-]+)\s*(?:=|:)/)
+        || raw.match(/^\s*\[([^\]]+)\]/);
+      if (key) label = key[1];
+    }
+    if (label && label.toLowerCase().includes(needle)) return i + 1;
+  }
+  return null;
+}
+
+async function openFileFromQuickOpen(filePath, options = {}) {
+  await openFileInTab(filePath);
+  requestAnimationFrame(() => {
+    const line = options.line || findSymbolLine(options.symbol);
+    if (line) jumpToLine(line);
+  });
+}
+
+function workspaceRelativePath(filePath) {
+  const fp = String(filePath || '').replace(/\\/g, '/');
+  const root = String(workspacePath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  if (root && fp.toLowerCase().startsWith((root + '/').toLowerCase())) {
+    return fp.slice(root.length + 1);
+  }
+  return fp.replace(/^\/+/, '');
+}
+
+function flattenFileTree(items, out = []) {
+  for (const item of items || []) {
+    if (item.isDirectory) {
+      flattenFileTree(item.children || [], out);
+      continue;
+    }
+    if (!isSupportedFormat(item.name || item.path)) continue;
+    out.push({
+      filePath: item.path,
+      relativePath: workspaceRelativePath(item.path),
+      baseName: item.name || item.path.split(/[\\/]/).pop(),
+      kind: getViewType(item.path),
+    });
+  }
+  return out;
+}
+
+async function getQuickOpenFiles() {
+  if (workspacePath && fileTreeCache.length === 0) {
+    try {
+      fileTreeCache = await window.formatpad.readDirectory(workspacePath) || [];
+    } catch {
+      fileTreeCache = [];
+    }
+  }
+  const files = flattenFileTree(fileTreeCache);
+  if (files.length || !workspacePath) return files;
+  const names = await window.formatpad.getFileNames(workspacePath);
+  return (names || []).map(item => ({
+    filePath: item.filePath,
+    relativePath: workspaceRelativePath(item.filePath),
+    baseName: item.baseName || (item.filePath || '').split(/[\\/]/).pop(),
+    kind: getViewType(item.filePath),
+  }));
+}
+
+async function readFileForQuickOpen(filePath) {
+  const tab = findTabByPath(filePath);
+  if (tab) {
+    const content = tab.id === activeTabId ? editor.state.doc.toString() : tab.editorState.doc.toString();
+    return { filePath: tab.filePath, dirPath: tab.dirPath, content };
+  }
+  const result = await window.formatpad.readFile(filePath);
+  if (result?.error) throw new Error(result.error);
+  return result;
+}
+
+function promptGoToLine() {
+  const body = document.createElement('div');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Line number';
+  input.value = String(editor.state.doc.lineAt(editor.state.selection.main.head).number);
+  body.appendChild(input);
+  const go = () => {
+    closeFmtModal();
+    jumpToLine(input.value);
+  };
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      go();
+    }
+  });
+  openFmtModal({
+    title: 'Go to Line',
+    body,
+    footer: [
+      { label: 'Cancel', onClick: closeFmtModal },
+      { label: 'Go', primary: true, onClick: go },
+    ],
+  });
+  setTimeout(() => input.focus(), 0);
+}
+
+function openFindInEditor() {
+  editor.focus();
+  openSearchPanel(editor);
+}
+
+function openReplaceInEditor() {
+  editor.focus();
+  openSearchPanel(editor);
+  requestAnimationFrame(() => {
+    const panel = document.querySelector('.cm-search');
+    const field = panel?.querySelector('input[name="replace"]') || panel?.querySelector('input[name="search"]');
+    field?.focus();
+    field?.select?.();
+  });
+}
+
+function openSettingsModal() {
+  const body = document.createElement('div');
+  body.className = 'fmt-modal-result';
+  body.textContent = 'Settings are currently split across Theme, Language, AI provider, and Terminal panels. The command is registered now so plugins and future settings UI can bind to the same entry point.';
+  openFmtModal({
+    title: 'Settings',
+    body,
+    footer: [{ label: 'Close', primary: true, onClick: closeFmtModal }],
+  });
+}
+
+async function closeAllUnpinnedTabs() {
+  const targets = tabs.filter(tb => !tb.pinned).map(tb => tb.id);
+  for (const id of targets) await closeTab(id);
+}
+
+function getCommandContext() {
+  const active = getActiveTab();
+  return {
+    activeTab: active,
+    hasActiveTab: !!active,
+    workspacePath,
+    viewMode,
+    vimEnabled,
+    minimapEnabled,
+    zenMode: document.body.classList.contains('zen-mode'),
+    isWeb: IS_WEB,
+  };
+}
+
+function openThemePanel() {
+  themePanel.classList.remove('hidden');
+  updateTopBarsBottom();
+  renderThemePanel();
+}
+
+function commandButtonTitle(button) {
+  return (button.getAttribute('title') || button.textContent || button.id)
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isElementCommandAvailable(button) {
+  if (!button || button.disabled || button.hidden) return false;
+  const bar = document.getElementById('format-bar');
+  if (bar?.hidden) return false;
+  const group = button.closest('.fmt-group');
+  if (group?.hidden) return false;
+  return true;
+}
+
+function collectFormatCommands() {
+  const buttons = Array.from(document.querySelectorAll('#format-bar button[id]'));
+  return buttons.map(button => ({
+    id: `format.${button.id.replace(/^fmt-/, '').replace(/-/g, '.')}`,
+    title: commandButtonTitle(button),
+    category: 'Format',
+    keywords: ['toolbar', button.id],
+    enabled: () => isElementCommandAvailable(button),
+    run: () => button.click(),
+  }));
+}
+
+function collectThemeCommands() {
+  return Object.entries(builtinThemes).map(([id, theme]) => ({
+    id: `theme.${id}`,
+    title: theme.name,
+    category: 'Theme',
+    keywords: [id, theme.type],
+    run: () => switchTheme(id),
+  }));
+}
+
+function collectLanguageCommands() {
+  return LANGUAGES.map(({ code, name }) => ({
+    id: `language.${code}`,
+    title: name,
+    category: 'Language',
+    keywords: [code],
+    run: () => {
+      langSelect.value = code;
+      localStorage.setItem('fp-locale', code);
+      setLocale(code);
+      window.formatpad.setLocale(code);
+      applyLocaleToDOM();
+      updateTitle();
+      if (getActiveTab()) renderPreview(editor.state.doc.toString());
+      renderThemePanel();
+    },
+  }));
+}
+
+function setupCommandRegistry() {
+  const baseCommands = [
+    { id: 'file.new', title: 'New File', category: 'File', keybinding: 'Ctrl N', priority: 100, run: () => { createTab(null, null, ''); editor.focus(); } },
+    { id: 'file.newTemplate', title: 'New from Template', category: 'File', keybinding: 'Ctrl Alt N', run: openNewFromTemplate },
+    { id: 'file.open', title: 'Open File', category: 'File', keybinding: 'Ctrl O', run: () => window.formatpad.openFileDialog() },
+    { id: 'file.openFolder', title: 'Open Folder', category: 'File', run: openFolder },
+    { id: 'file.save', title: 'Save', category: 'File', keybinding: 'Ctrl S', enabled: ({ hasActiveTab }) => hasActiveTab, run: saveFile },
+    { id: 'file.saveAs', title: 'Save As', category: 'File', keybinding: 'Ctrl Shift S', enabled: ({ hasActiveTab }) => hasActiveTab, run: saveFileAs },
+    { id: 'file.closeTab', title: 'Close Tab', category: 'File', keybinding: 'Ctrl W', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => activeTabId && closeTab(activeTabId) },
+    { id: 'file.closeAll', title: 'Close All Tabs', category: 'File', enabled: () => tabs.length > 0, run: closeAllUnpinnedTabs },
+    { id: 'git.refresh', title: 'Refresh Status', category: 'Git', enabled: () => !!workspacePath, run: () => refreshGitStatus() },
+    { id: 'git.branchSwitcher', title: 'Open Branch Switcher', category: 'Git', enabled: () => gitRepoState.isRepo, run: openGitBranchSwitcher },
+    { id: 'git.showDiff', title: 'Show diff (vs HEAD)', category: 'Git', enabled: ({ activeTab }) => gitRepoState.isRepo && !!activeTab?.filePath, run: showGitDiffForActiveFile },
+    { id: 'git.revertFile', title: 'Revert current file', category: 'Git', enabled: ({ activeTab }) => gitRepoState.isRepo && !!activeTab?.filePath, run: revertGitCurrentFile },
+    { id: 'snippets.insert', title: 'Insert Snippet...', category: 'Snippets', enabled: ({ hasActiveTab }) => hasActiveTab, run: openSnippetPicker },
+    { id: 'snippets.editUser', title: 'Edit User Snippets', category: 'Snippets', run: editUserSnippets },
+    { id: 'edit.find', title: 'Find in Editor', category: 'Edit', keybinding: 'Ctrl F', enabled: ({ hasActiveTab }) => hasActiveTab, run: openFindInEditor },
+    { id: 'edit.replace', title: 'Replace in Editor', category: 'Edit', keybinding: 'Ctrl H', enabled: ({ hasActiveTab }) => hasActiveTab, run: openReplaceInEditor },
+    { id: 'edit.goToLine', title: 'Go to Line', category: 'Edit', keybinding: 'Ctrl G', enabled: ({ hasActiveTab }) => hasActiveTab, run: promptGoToLine },
+    { id: 'editor.toggleVim', title: 'Toggle Vim Mode', category: 'Editor', keywords: ['vim', 'modal'], run: () => setVimEnabled(!vimEnabled) },
+    { id: 'editor.toggleMinimap', title: 'Toggle Minimap', category: 'Editor', keywords: ['map', 'overview'], run: () => setMinimapEnabled(!minimapEnabled) },
+    { id: 'editor.toggleZen', title: 'Toggle Zen Mode', category: 'Editor', keybinding: 'Ctrl K Z', keywords: ['focus', 'distraction free'], run: toggleZenMode },
+    { id: 'editor.addCursorAbove', title: 'Add Cursor Above', category: 'Editor', keybinding: 'Ctrl Alt Up', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(addCursorAbove) },
+    { id: 'editor.addCursorBelow', title: 'Add Cursor Below', category: 'Editor', keybinding: 'Ctrl Alt Down', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(addCursorBelow) },
+    { id: 'editor.selectNextOccurrence', title: 'Select Next Occurrence', category: 'Editor', keybinding: 'Ctrl D', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(selectNextOccurrence) },
+    { id: 'editor.selectAllOccurrences', title: 'Select All Occurrences', category: 'Editor', keybinding: 'Ctrl Shift L', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(selectMatches) },
+    { id: 'editor.moveLineUp', title: 'Move Line Up', category: 'Editor', keybinding: 'Alt Up', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(moveLineUp) },
+    { id: 'editor.moveLineDown', title: 'Move Line Down', category: 'Editor', keybinding: 'Alt Down', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(moveLineDown) },
+    { id: 'editor.copyLineUp', title: 'Copy Line Up', category: 'Editor', keybinding: 'Shift Alt Up', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(copyLineUp) },
+    { id: 'editor.copyLineDown', title: 'Copy Line Down', category: 'Editor', keybinding: 'Shift Alt Down', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(copyLineDown) },
+    { id: 'editor.toggleLineComment', title: 'Toggle Line Comment', category: 'Editor', keybinding: 'Ctrl /', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(toggleComment) },
+    { id: 'editor.toggleBlockComment', title: 'Toggle Block Comment', category: 'Editor', keybinding: 'Ctrl Shift /', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(toggleBlockComment) },
+    { id: 'editor.foldSelection', title: 'Fold Selection', category: 'Editor', keybinding: 'Ctrl Shift [', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(foldCode) },
+    { id: 'editor.unfoldSelection', title: 'Unfold Selection', category: 'Editor', keybinding: 'Ctrl Shift ]', enabled: ({ hasActiveTab }) => hasActiveTab, run: () => runEditorCommand(unfoldCode) },
+    { id: 'view.toc', title: 'Toggle Table of Contents', category: 'View', keybinding: 'Ctrl T', run: () => showSidebar('toc') },
+    { id: 'view.files', title: 'Toggle File Explorer', category: 'View', keybinding: 'Ctrl Shift E', run: () => showSidebar('files') },
+    { id: 'view.search', title: 'Search in Files', category: 'View', keybinding: 'Ctrl Shift F', run: () => showSidebar('search') },
+    { id: 'view.backlinks', title: 'Toggle Backlinks', category: 'View', keybinding: 'Ctrl Shift B', run: () => showSidebar('backlinks') },
+    { id: 'view.terminal', title: 'Toggle Terminal', category: 'View', keybinding: 'Ctrl `', run: () => terminalController?.toggle() },
+    { id: 'view.ai', title: 'Toggle AI Sidebar', category: 'View', keybinding: 'Ctrl L', run: () => aiController?.toggle() },
+    { id: 'view.zen', title: 'Zen Mode', category: 'View', keywords: ['focus'], run: toggleZenMode },
+    { id: 'view.editor', title: 'Editor Only', category: 'View', run: () => setViewMode('editor') },
+    { id: 'view.split', title: 'Split View', category: 'View', run: () => setViewMode('split') },
+    { id: 'view.preview', title: 'Preview Only', category: 'View', run: () => setViewMode('preview') },
+    { id: 'view.themePanel', title: 'Open Theme Panel', category: 'View', run: openThemePanel },
+    { id: 'ai.newChat', title: 'New AI Chat', category: 'AI', run: () => aiController?.newChat?.() },
+    { id: 'ai.switchProvider', title: 'Switch AI Provider', category: 'AI', run: () => aiController?.openSettings?.() },
+    { id: 'ai.runLastAction', title: 'Run Last AI Action', category: 'AI', run: () => aiController?.runLastAction?.() },
+    { id: 'terminal.newTerminal', title: 'New Terminal', category: 'Terminal', keybinding: 'Ctrl Shift `', run: () => terminalController?.newTerminal?.() },
+    { id: 'terminal.commandRunner', title: 'Run Command in Command Runner', category: 'Terminal', run: () => terminalController?.openRunner?.() },
+    { id: 'settings.open', title: 'Open Settings', category: 'Settings', run: openSettingsModal },
+    { id: 'settings.reloadWindow', title: 'Reload Window', category: 'Settings', run: () => window.location.reload() },
+  ];
+
+  registerCommands([
+    ...baseCommands,
+    ...collectFormatCommands(),
+    ...collectThemeCommands(),
+    ...collectLanguageCommands(),
+  ]);
+
+  const publicCommands = {
+    registerCommand,
+    registerCommands,
+    runCommand: (id, args) => runCommand(id, args, getCommandContext()),
+    getCommands: () => getCommands(getCommandContext()).map(({ run, when, enabled, ...command }) => command),
+  };
+  try { window.formatpad.commands = publicCommands; } catch {}
+  if (!window.formatpad.commands) {
+    try { Object.defineProperty(window.formatpad, 'commands', { value: publicCommands, configurable: true }); } catch {}
+  }
+  window.formatpadCommands = publicCommands;
 }
 
 // ==================== View Modes ====================
@@ -2875,6 +4197,7 @@ function setViewMode(mode) {
   document.body.classList.remove('view-editor', 'view-split', 'view-preview');
   document.body.classList.add('view-' + mode);
   Object.entries(viewBtns).forEach(([k, btn]) => btn.classList.toggle('active', k === mode));
+  updateZenLayoutClass();
   if (mode === 'editor') editor.focus();
 }
 
@@ -2928,7 +4251,12 @@ dividerEl.addEventListener('dblclick', () => {
 async function saveFile() {
   const tab = getActiveTab();
   if (!tab) return;
-  const content = editor.state.doc.toString();
+  let content = editor.state.doc.toString();
+  const prepared = prepareTemplateContentForSave(content);
+  if (prepared !== content) {
+    replaceEditorDoc(prepared);
+    content = prepared;
+  }
   if (tab.filePath) {
     const ok = await window.formatpad.saveFile(tab.filePath, content);
     if (ok) {
@@ -2941,6 +4269,8 @@ async function saveFile() {
       showSaveFlash();
       window.formatpad.clearRecovery(getRecoveryKey(tab));
       track('file_save', { format: tab.viewType, edit_duration_sec: String(editDuration) });
+      scheduleGitRefresh(0);
+      if (isUserSnippetPath(tab.filePath)) scheduleSnippetRefresh(0);
     } else {
       alert(t('failedSave'));
     }
@@ -2952,19 +4282,29 @@ async function saveFile() {
 async function saveFileAs() {
   const tab = getActiveTab();
   if (!tab) return;
-  const content = editor.state.doc.toString();
+  let content = editor.state.doc.toString();
+  const prepared = prepareTemplateContentForSave(content);
+  if (prepared !== content) {
+    replaceEditorDoc(prepared);
+    content = prepared;
+  }
   const oldKey = getRecoveryKey(tab);
   const result = await window.formatpad.saveFileAs(content);
   if (result) {
     window.formatpad.clearRecovery(oldKey);
     tab.filePath = result;
     tab.dirPath = result.substring(0, Math.max(result.lastIndexOf('/'), result.lastIndexOf('\\')));
+    tab.title = null;
+    tab.source = null;
+    tab.sourceUrl = null;
     tab.lastSavedContent = content;
     tab.lastAutoSavedContent = null;
     tab.isModified = false;
     updateTitle();
     renderTabBar();
     showSaveFlash();
+    scheduleGitRefresh(0);
+    if (isUserSnippetPath(tab.filePath)) scheduleSnippetRefresh(0);
   }
 }
 
@@ -2990,6 +4330,7 @@ document.getElementById('btn-new').addEventListener('click', () => {
   createTab(null, null, '');
   editor.focus();
 });
+document.getElementById('btn-template')?.addEventListener('click', openNewFromTemplate);
 document.getElementById('btn-open').addEventListener('click', () => {
   window.formatpad.openFileDialog();
 });
@@ -3021,8 +4362,22 @@ langSelect.addEventListener('change', () => {
 // drop handler (which would treat the coordinates as a text insertion point
 // and mark the existing document as modified).
 let dragCounter = 0;
+function isUrlTransfer(dataTransfer) {
+  return Boolean(dataTransfer?.types?.includes('text/uri-list') || dataTransfer?.types?.includes('text/plain'));
+}
+function isTabBarDragTarget(e) {
+  return Boolean(e.target?.closest?.('#tab-bar'));
+}
+function getDroppedUrl(dataTransfer) {
+  const uriList = dataTransfer?.getData('text/uri-list') || '';
+  const plain = dataTransfer?.getData('text/plain') || '';
+  const candidate = (uriList.split(/\r?\n/).find((line) => line && !line.startsWith('#')) || plain).trim();
+  return /^https?:\/\//i.test(candidate) ? candidate : '';
+}
 document.addEventListener('dragenter', (e) => {
-  if (!e.dataTransfer.types.includes('Files')) return;
+  if (isTabBarDragTarget(e)) return;
+  if (e.dataTransfer.types.includes('application/x-fp-link')) return;
+  if (!e.dataTransfer.types.includes('Files') && !isUrlTransfer(e.dataTransfer)) return;
   if (e.target && e.target.closest && e.target.closest('.diff-text')) return; // let diff textarea handle
   e.preventDefault();
   e.stopPropagation();
@@ -3030,9 +4385,10 @@ document.addEventListener('dragenter', (e) => {
   document.body.classList.add('drag-over');
 }, true);
 document.addEventListener('dragover', (e) => {
+  if (isTabBarDragTarget(e)) return;
   if (e.dataTransfer.types.includes('application/x-fp-link')) return;
   if (e.target && e.target.closest && e.target.closest('.diff-text')) return; // let diff textarea handle
-  if (e.dataTransfer.types.includes('Files')) {
+  if (e.dataTransfer.types.includes('Files') || isUrlTransfer(e.dataTransfer)) {
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -3040,7 +4396,9 @@ document.addEventListener('dragover', (e) => {
   e.preventDefault();
 }, true);
 document.addEventListener('dragleave', (e) => {
-  if (!e.dataTransfer.types.includes('Files')) return;
+  if (isTabBarDragTarget(e)) return;
+  if (e.dataTransfer.types.includes('application/x-fp-link')) return;
+  if (!e.dataTransfer.types.includes('Files') && !isUrlTransfer(e.dataTransfer)) return;
   if (e.target && e.target.closest && e.target.closest('.diff-text')) return;
   e.preventDefault();
   e.stopPropagation();
@@ -3048,6 +4406,7 @@ document.addEventListener('dragleave', (e) => {
   if (dragCounter <= 0) { dragCounter = 0; document.body.classList.remove('drag-over'); }
 }, true);
 document.addEventListener('drop', (e) => {
+  if (isTabBarDragTarget(e)) return;
   // Internal drag (file tree → editor): let CodeMirror handle it
   if (e.dataTransfer.types.includes('application/x-fp-link')) return;
   // Diff panel: let the textarea's own drop handler load the file text
@@ -3060,11 +4419,17 @@ document.addEventListener('drop', (e) => {
   document.body.classList.remove('drag-over');
   e.preventDefault();
   e.stopPropagation();
+  const droppedUrl = getDroppedUrl(e.dataTransfer);
+  if (droppedUrl) {
+    window.formatpad.openUrl?.(droppedUrl).catch((err) => {
+      if (err?.name !== 'AbortError') notifyFormatError('URL import', err);
+    });
+    return;
+  }
   const files = e.dataTransfer.files;
   for (const file of files) {
     if (isSupportedFormat(file.name)) {
-      const filePath = window.formatpad.getPathForFile(file);
-      if (filePath) window.formatpad.dropFile(filePath);
+      window.formatpad.dropFile(file);
     }
   }
 }, true);
@@ -3076,7 +4441,10 @@ function updateStatusBar() {
   const line = state.doc.lineAt(main.head);
   const col = main.head - line.from + 1;
   statusCursorEl.textContent = `Ln ${line.number}, Col ${col}`;
-  if (main.from !== main.to) {
+  if (state.selection.ranges.length > 1) {
+    const selected = state.selection.ranges.reduce((sum, range) => sum + Math.abs(range.to - range.from), 0);
+    statusSelectionEl.textContent = `${state.selection.ranges.length} cursors${selected ? `, ${selected} selected` : ''}`;
+  } else if (main.from !== main.to) {
     const len = Math.abs(main.to - main.from);
     statusSelectionEl.textContent = `(${len} selected)`;
   } else {
@@ -3086,6 +4454,7 @@ function updateStatusBar() {
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   statusWordsEl.textContent = `${words} words`;
   statusReadTimeEl.textContent = `~${Math.max(1, Math.ceil(words / 200))} min`;
+  updateVimStatusBar();
 }
 
 // ==================== Format Toolbar ====================
@@ -3206,6 +4575,42 @@ document.getElementById('fmt-details').addEventListener('click', () => {
 function replaceEditorDoc(text) {
   editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } });
   editor.focus();
+}
+
+function getEditorSelectionText() {
+  const { from, to } = editor.state.selection.main;
+  return from === to ? '' : editor.state.sliceDoc(from, to);
+}
+
+function replaceSelectionOrDoc(text) {
+  const { from, to } = editor.state.selection.main;
+  if (from !== to) {
+    editor.dispatch({ changes: { from, to, insert: text } });
+    editor.focus();
+    return;
+  }
+  replaceEditorDoc(text);
+}
+
+function insertRunnerTroubleshootingBlock(markdown) {
+  const tab = getActiveTab();
+  const block = String(markdown || '').trim();
+  if (!block) return;
+  if (!tab || tab.viewType !== 'markdown') {
+    const newTab = createTab(null, null, `## Troubleshooting\n\n${block}\n`);
+    newTab.title = 'Troubleshooting.md';
+    newTab.viewType = 'markdown';
+    newTab.editorState = createEditorState(editor.state.doc.toString(), 'markdown');
+    renderTabBar();
+    return;
+  }
+  const current = editor.state.doc.toString();
+  const headingRe = /^## Troubleshooting\s*$/m;
+  const insert = `\n\n${block}\n`;
+  const next = headingRe.test(current)
+    ? `${current.replace(/\s*$/, '')}${insert}`
+    : `${current.replace(/\s*$/, '')}\n\n## Troubleshooting${insert}`;
+  replaceEditorDoc(next);
 }
 
 function notifyFormatError(label, err) {
@@ -3563,13 +4968,101 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+function confirmUrlFetchModal(detail) {
+  return new Promise((resolve) => {
+    const body = document.createElement('div');
+    body.className = 'share-modal';
+    const title = detail.kind === 'large' ? 'Large URL import' : 'External URL import';
+    const summary = document.createElement('p');
+    summary.textContent = detail.message || `Fetch file from ${detail.hostname}?`;
+    const urlBox = document.createElement('textarea');
+    urlBox.className = 'share-link-box';
+    urlBox.readOnly = true;
+    urlBox.value = detail.url || '';
+    body.append(summary, urlBox);
+
+    openFmtModal({
+      title,
+      body,
+      footer: [
+        { label: 'Cancel', onClick: () => { closeFmtModal(); resolve(false); } },
+        { label: 'Fetch file', primary: true, onClick: () => { closeFmtModal(); resolve(true); } },
+      ],
+    });
+  });
+}
+
+window.formatpad.setUrlConfirmHandler?.(confirmUrlFetchModal);
+window.formatpad.setUrlErrorHandler?.((err) => notifyFormatError('URL import', err));
+
+function openShareModal() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const content = editor.state.doc.toString();
+  const name = getTabDisplayName(tab);
+  const bytes = sharedByteLength(content);
+  const shareUrl = buildFragmentShareUrl({
+    content,
+    name,
+    baseHref: window.location.href,
+  });
+
+  const body = document.createElement('div');
+  body.className = 'share-modal';
+  const intro = document.createElement('p');
+  intro.textContent = 'Copy a one-way snapshot link for the current tab. Anyone opening it gets an unsaved copy in FormatPad Web.';
+  const linkBox = document.createElement('textarea');
+  linkBox.className = 'share-link-box';
+  linkBox.readOnly = true;
+  linkBox.value = shareUrl;
+  linkBox.addEventListener('focus', () => linkBox.select());
+  body.append(intro, linkBox);
+
+  if (bytes > SHARE_WARN_BYTES) {
+    const warning = document.createElement('div');
+    warning.className = 'share-warning';
+    warning.textContent = bytes > SHARE_GIST_BYTES
+      ? 'This document is over 256 KB; practical URL length limits may break the link. Create Gist is the recommended next path.'
+      : 'This document is over 128 KB; the generated URL may be too long for some browsers or chat apps.';
+    body.appendChild(warning);
+  }
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      linkBox.select();
+    } catch (err) {
+      notifyFormatError('Share', err);
+    }
+  };
+  const showGistStub = () => {
+    notifyFormatError('Create Gist', new Error('Configure a GitHub PAT in Settings first. TODO: add Settings > GitHub token and POST /gists wiring.'));
+  };
+
+  openFmtModal({
+    title: 'Share current tab',
+    body,
+    footer: [
+      { label: 'Create Gist', onClick: showGistStub },
+      { label: bytes > SHARE_GIST_BYTES ? 'Copy long link' : 'Copy link', primary: true, onClick: copyLink },
+      { label: 'Close', onClick: closeFmtModal },
+    ],
+  });
+  setTimeout(() => linkBox.select(), 0);
+}
+
+document.getElementById('btn-share')?.addEventListener('click', openShareModal);
+
 // ==================== Auto-update Modal ====================
-function showUpdateModal({ currentVersion, latestVersion, releaseBody, hasInstaller }) {
+function showUpdateModal({ currentVersion, latestVersion, releaseBody, hasInstaller, verificationNotice }) {
   const body = document.createElement('div');
   body.className = 'update-modal';
   const notesBlock = releaseBody
     ? `<div class="update-modal-notes-header">${escapeHtml(t('update.releaseNotes'))}</div>
        <div class="update-modal-notes">${escapeHtml(releaseBody)}</div>`
+    : '';
+  const verificationBlock = verificationNotice
+    ? `<div class="share-warning">${escapeHtml(verificationNotice)}</div>`
     : '';
   body.innerHTML = `
     <div class="update-modal-hero">
@@ -3590,6 +5083,7 @@ function showUpdateModal({ currentVersion, latestVersion, releaseBody, hasInstal
       </div>
     </div>
     ${notesBlock}
+    ${verificationBlock}
   `;
 
   const act = (action) => { closeFmtModal(); window.formatpad.updateAction(action); };
@@ -3950,12 +5444,23 @@ document.getElementById('fmt-json-schema').addEventListener('click', () => {
   fetchBtn.addEventListener('click', async () => {
     const url = urlInput.value.trim();
     if (!url) return;
-    fetchBtn.textContent = '…';
+    fetchBtn.textContent = '...';
     fetchBtn.disabled = true;
     try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      schemaTa.value = await resp.text();
+      if (window.formatpad.fetchUrlText) {
+        const result = await window.formatpad.fetchUrlText(url);
+        schemaTa.value = result.content;
+      } else {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:') throw new Error('HTTPS required for schema URL fetch.');
+        const resp = await fetch(parsed.href);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const length = Number(resp.headers.get('content-length') || 0);
+        if (length > 10 * 1024 * 1024) throw new Error('Schema URL is larger than 10 MB.');
+        const text = await resp.text();
+        if (new TextEncoder().encode(text).length > 10 * 1024 * 1024) throw new Error('Schema URL is larger than 10 MB.');
+        schemaTa.value = text;
+      }
     } catch (err) {
       result.classList.remove('ok');
       result.classList.add('error');
@@ -4349,18 +5854,63 @@ async function renderMermaidBlocks() {
 }
 
 // ==================== Keyboard Shortcuts ====================
+function shouldIgnoreGlobalShortcut(event) {
+  const target = event.target;
+  const el = target instanceof Element ? target : target?.parentElement;
+  if (!el) return false;
+  if (el.closest('.cm-editor')) return false;
+  if (typeof fmtModalEl !== 'undefined' && fmtModalEl && !fmtModalEl.classList.contains('hidden')) return true;
+  return !!el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]');
+}
+
 document.addEventListener('keydown', (e) => {
+  if (e.formatpadInternal) return;
+  if (shouldIgnoreGlobalShortcut(e)) return;
   const key = e.key.toLowerCase();
-  if (e.ctrlKey && key === 'b' && !e.shiftKey) { e.preventDefault(); wrapSelection('**', '**', 'bold'); }
-  if (e.ctrlKey && key === 'i' && !e.shiftKey) { e.preventDefault(); wrapSelection('*', '*', 'italic'); }
-  if (e.ctrlKey && key === 'k') { e.preventDefault(); document.getElementById('fmt-link').click(); }
-  if (e.ctrlKey && key === 'n') { e.preventDefault(); createTab(null, null, ''); editor.focus(); }
-  if (e.ctrlKey && key === 'o' && !e.shiftKey) { e.preventDefault(); window.formatpad.openFileDialog(); }
-  if (e.ctrlKey && key === 't' && !e.shiftKey) { e.preventDefault(); showSidebar('toc'); }
-  if (e.ctrlKey && key === 's' && !e.defaultPrevented) { e.preventDefault(); if (e.shiftKey) saveFileAs(); else saveFile(); }
-  if (e.ctrlKey && key === 'w') { e.preventDefault(); if (activeTabId) closeTab(activeTabId); }
+  const mod = e.ctrlKey || e.metaKey;
+  const runShortcut = (id) => {
+    e.preventDefault();
+    runCommand(id, {}, getCommandContext()).catch(err => notifyFormatError('Command', err));
+  };
+  const clearZenChord = () => {
+    zenChordArmed = false;
+    if (zenChordTimer) {
+      clearTimeout(zenChordTimer);
+      zenChordTimer = null;
+    }
+  };
+  if (commandPalette?.shouldHandleShortcut(e)) { e.preventDefault(); commandPalette.open(); return; }
+  if (quickOpen?.shouldHandleShortcut(e)) { e.preventDefault(); quickOpen.open(); return; }
+  if (zenChordArmed) {
+    if (key === 'z' && !e.altKey && !e.shiftKey) {
+      clearZenChord();
+      runShortcut('editor.toggleZen');
+      return;
+    }
+    clearZenChord();
+  }
+  if (mod && key === 'b' && !e.shiftKey) { runShortcut('format.bold'); return; }
+  if (mod && key === 'i' && !e.shiftKey) { runShortcut('format.italic'); return; }
+  if (mod && key === 'k' && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    zenChordArmed = true;
+    zenChordTimer = setTimeout(() => {
+      clearZenChord();
+      runCommand('format.link', {}, getCommandContext()).catch(err => notifyFormatError('Command', err));
+    }, 650);
+    return;
+  }
+  if (mod && e.altKey && key === 'n') { runShortcut('file.newTemplate'); return; }
+  if (mod && key === 'n') { runShortcut('file.new'); return; }
+  if (mod && key === 'o' && !e.shiftKey) { runShortcut('file.open'); return; }
+  if (mod && key === 't' && !e.shiftKey) { runShortcut('view.toc'); return; }
+  if (mod && key === 's' && !e.defaultPrevented) { runShortcut(e.shiftKey ? 'file.saveAs' : 'file.save'); return; }
+  if (mod && key === 'w') { runShortcut('file.closeTab'); return; }
+  if (mod && key === 'f' && !e.shiftKey) { runShortcut('edit.find'); return; }
+  if (mod && key === 'h' && !e.shiftKey) { runShortcut('edit.replace'); return; }
+  if (mod && key === 'g' && !e.shiftKey) { runShortcut('edit.goToLine'); return; }
   // Ctrl+Tab / Ctrl+Shift+Tab to cycle tabs
-  if (e.ctrlKey && e.key === 'Tab') {
+  if (mod && e.key === 'Tab') {
     e.preventDefault();
     if (tabs.length > 1) {
       const currentIdx = tabs.findIndex(tb => tb.id === activeTabId);
@@ -4371,28 +5921,35 @@ document.addEventListener('keydown', (e) => {
     }
   }
   // Ctrl+Shift+E — file explorer
-  if (e.ctrlKey && e.shiftKey && key === 'e') { e.preventDefault(); showSidebar('files'); }
+  if (mod && e.shiftKey && key === 'e') { runShortcut('view.files'); return; }
   // Ctrl+Shift+F — search in files
-  if (e.ctrlKey && e.shiftKey && key === 'f') { e.preventDefault(); showSidebar('search'); }
+  if (mod && e.shiftKey && key === 'f') { runShortcut('view.search'); return; }
   // Ctrl+Shift+B — backlinks
-  if (e.ctrlKey && e.shiftKey && key === 'b') { e.preventDefault(); showSidebar('backlinks'); }
+  if (mod && e.shiftKey && key === 'b') { runShortcut('view.backlinks'); return; }
   if (key === 'escape') {
+    if (document.body.classList.contains('zen-mode')) setZenMode(false);
     if (!themePanel.classList.contains('hidden')) themePanel.classList.add('hidden');
     if (!exportMenu.classList.contains('hidden')) exportMenu.classList.add('hidden');
     document.getElementById('context-menu').classList.add('hidden');
   }
-});
+}, true);
 
 // ==================== IPC ====================
 window.formatpad.onLoadMarkdown((data) => {
-  const tab = createTab(data.filePath, data.dirPath, data.content);
+  const tab = createTab(data.filePath, data.dirPath, data.content, data.savedContent, {
+    title: data.title,
+    source: data.source,
+    sourceUrl: data.sourceUrl,
+    forceUnsaved: data.forceUnsaved,
+  });
   if ('savedContent' in data) {
     tab.lastSavedContent = normalizeLineEndings(data.savedContent);
-    tab.isModified = editor.state.doc.toString() !== tab.lastSavedContent;
+    tab.isModified = data.forceUnsaved === true || editor.state.doc.toString() !== tab.lastSavedContent;
     updateTitle();
     renderTabBar();
   }
 });
+window.formatpad.onNewFromTemplate?.(() => openNewFromTemplate());
 
 // ==================== Init ====================
 function applyLocaleToDOM() {
@@ -4479,12 +6036,141 @@ window.addEventListener('resize', () => {
   const savedRatio = parseFloat(localStorage.getItem('fp-divider-ratio'));
   if (savedRatio > 0 && savedRatio < 1) applyDividerRatio(savedRatio);
 
+  const approvedWorkspace = await window.formatpad.getApprovedWorkspace?.().catch(() => null);
+  if (approvedWorkspace) {
+    workspacePath = approvedWorkspace;
+    localStorage.setItem('fp-workspace-path', workspacePath);
+  } else if (workspacePath) {
+    workspacePath = null;
+    localStorage.removeItem('fp-workspace-path');
+  }
+
   // Restore workspace & file tree
   if (workspacePath) {
     loadFileTree();
     window.formatpad.watchDirectory(workspacePath);
     window.formatpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
+    scheduleGitRefresh(0);
+    scheduleSnippetRefresh(0);
   }
+  await refreshUserSnippets();
+  window.formatpad.userSnippets?.watch?.();
+  window.formatpad.userSnippets?.onChanged?.(() => scheduleSnippetRefresh(100));
+
+  terminalController = createTerminalPanel({
+    track,
+    hooks: {
+      getActiveTab() {
+        const tab = getActiveTab();
+        if (!tab) return null;
+        return {
+          id: tab.id,
+          filePath: tab.filePath,
+          dirPath: tab.dirPath,
+          viewType: tab.viewType,
+        };
+      },
+      getWorkspacePath() { return workspacePath; },
+      openModal: openFmtModal,
+      closeModal: closeFmtModal,
+      notify: notifyFormatError,
+      insertRunnerBlock: insertRunnerTroubleshootingBlock,
+    },
+  });
+  document.getElementById('btn-terminal')?.addEventListener('click', () => terminalController?.toggle());
+
+  aiController = initAISidebar({
+    workspaceEl,
+    track,
+    hooks: {
+      getActiveTab() {
+        const tab = getActiveTab();
+        if (!tab) return null;
+        return {
+          id: tab.id,
+          filePath: tab.filePath,
+          name: tab.filePath ? tab.filePath.split(/[/\\]/).pop() : (tab.title || t('untitled')),
+          dirPath: tab.dirPath,
+          viewType: tab.viewType,
+          content: editor.state.doc.toString(),
+          selection: getEditorSelectionText(),
+          isModified: tab.isModified,
+        };
+      },
+      getOpenTabs() {
+        return tabs.map(tab => ({
+          id: tab.id,
+          filePath: tab.filePath,
+          name: tab.filePath ? tab.filePath.split(/[/\\]/).pop() : (tab.title || t('untitled')),
+          viewType: tab.viewType,
+          isModified: tab.isModified,
+        }));
+      },
+      getWorkspacePath() { return workspacePath; },
+      getRunnerAttachment() { return terminalController?.getLastOutput?.() || null; },
+      getTemplateSection(section) {
+        const active = getActiveTab();
+        if (!active || active.viewType !== 'markdown') return null;
+        const range = findSectionRange(editor.state.doc.toString(), section);
+        return range ? { section, text: range.text } : null;
+      },
+      replaceTemplateSection(section, text) {
+        const active = getActiveTab();
+        if (!active || active.viewType !== 'markdown') return;
+        const next = replaceSectionContent(editor.state.doc.toString(), section, text);
+        replaceEditorDoc(next);
+        renderTemplateStatusChip();
+      },
+      async getWorkspaceFiles() {
+        if (!workspacePath) return [];
+        try {
+          const names = await window.formatpad.getFileNames(workspacePath);
+          return (names || []).slice(0, 100).map(item => item.filePath || item.baseName || '');
+        } catch {
+          return [];
+        }
+      },
+      replaceSelectionOrDocument: replaceSelectionOrDoc,
+      replaceDocument: replaceEditorDoc,
+      createTextTab(name, content, viewType) {
+        const tab = createTab(null, null, content || '');
+        tab.title = name || t('untitled');
+        if (viewType) {
+          tab.viewType = viewType;
+          tab.editorState = createEditorState(content || '', viewType);
+          editor.setState(tab.editorState);
+          renderPreview(content || '');
+          updateFormatBar(viewType);
+        }
+        renderTabBar();
+        return tab;
+      },
+      showCsvFilterChip(label) {
+        currentGrid?.showFilterChip?.(label);
+      },
+      openModal: openFmtModal,
+      closeModal: closeFmtModal,
+      notify: notifyFormatError,
+    },
+  });
+
+  const commandRoot = document.getElementById('command-palette-root') || document.body;
+  commandPalette = createCommandPalette({
+    root: commandRoot,
+    getCommands,
+    runCommand: (id, args) => runCommand(id, args, getCommandContext()),
+    getContext: getCommandContext,
+    notify: notifyFormatError,
+  });
+  quickOpen = createQuickOpen({
+    root: commandRoot,
+    getFiles: getQuickOpenFiles,
+    readFile: readFileForQuickOpen,
+    openFile: openFileFromQuickOpen,
+    getWorkspacePath: () => workspacePath,
+    notify: notifyFormatError,
+  });
+  setupCommandRegistry();
 
   // Auto-save recovery (every 30 seconds)
   autoSaveTimer = setInterval(() => {

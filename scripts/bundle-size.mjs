@@ -20,6 +20,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
+const PACKAGE = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
 
 // NOTE: ideal target is 1.8 MB; raised to current+10% until P0-9 tree-shakes mermaid/cytoscape.
 const RENDERER_BUDGET_BYTES = 2.05 * 1024 * 1024; // ~2.05 MB gzipped
@@ -27,7 +28,7 @@ const HTML_BUDGET_BYTES = 100 * 1024;             // 100 KB gzipped
 
 // ── 1. Bundle the minified renderer in-memory ────────────────────────────────
 console.log('Bundling minified web renderer (in-memory)…');
-const result = esbuild.buildSync({
+const result = await esbuild.build({
   entryPoints: [path.join(ROOT, 'src/web/entry.js')],
   bundle: true,
   minify: true,
@@ -36,7 +37,30 @@ const result = esbuild.buildSync({
   sourcemap: false,
   target: ['chrome120', 'firefox115', 'safari17', 'edge120'],
   loader: { '.css': 'text', '.png': 'dataurl' },
-  define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [{
+    name: 'desktop-terminal-stub',
+    setup(build) {
+      build.onResolve({ filter: /^isomorphic-git$/ }, () => ({
+        path: path.join(ROOT, 'node_modules/isomorphic-git/index.js'),
+      }));
+      build.onResolve({ filter: /^@sentry\/electron\/renderer$/ }, () => ({
+        path: path.join(ROOT, 'src/web/sentry-renderer-stub.js'),
+      }));
+      build.onResolve({ filter: /^\.\/pty-view\.js$/ }, (args) => {
+        if (args.importer.replace(/\\/g, '/').endsWith('/src/renderer/terminal/panel.js')) {
+          return { path: path.join(ROOT, 'src/web/terminal-pty-stub.js') };
+        }
+        return undefined;
+      });
+    },
+  }],
+  define: {
+    'process.env.NODE_ENV': '"production"',
+    'process.env.FORMATPAD_WEB': '"true"',
+    'process.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN || ''),
+    'process.env.PLAUSIBLE_DOMAIN': JSON.stringify(process.env.PLAUSIBLE_DOMAIN || ''),
+    'process.env.APP_VERSION': JSON.stringify(PACKAGE.version),
+  },
   write: false,
   metafile: true,
 });
@@ -57,22 +81,38 @@ const sorted = Object.entries(metafile.inputs)
 // ── 3. Rewrite index.html exactly like scripts/build-web.js does ─────────────
 // Keep this mirror logic tight — if build-web.js changes, update both.
 const srcHtml = fs.readFileSync(path.join(ROOT, 'src/renderer/index.html'), 'utf-8');
+const pwaHead = [
+  '  <link rel="manifest" href="manifest.webmanifest">',
+  '  <meta name="theme-color" content="#0f172a">',
+  '  <meta name="apple-mobile-web-app-capable" content="yes">',
+  '  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+  '  <meta name="apple-mobile-web-app-title" content="FormatPad">',
+  '  <link rel="apple-touch-icon" href="icons/icon-192.png">',
+].join('\n');
 const builtHtml = srcHtml
   .replace(
     /<meta http-equiv="Content-Security-Policy" content="[^"]+">/,
     '<meta http-equiv="Content-Security-Policy" content="' +
       "default-src 'self'; " +
-      "style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: blob: https:; " +
-      "font-src 'self' data:; " +
       "script-src 'self'; " +
-      "connect-src 'self'; " +
-      "frame-src 'self' data: blob:;" +
+      "style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob:; " +
+      "font-src 'self' data:; " +
+      "connect-src 'self' https://*; " +
+      "worker-src 'self' blob:; " +
+      "frame-src 'none'; " +
+      "object-src 'none'; " +
+      "base-uri 'none'; " +
+      "form-action 'none';" +
     '">'
   )
   .replace(
     /<script src="\.\.\/\.\.\/dist\/renderer\.js"><\/script>/,
     '<script src="renderer.js"></script>'
+  )
+  .replace(
+    '  <title>FormatPad</title>',
+    `${pwaHead}\n  <title>FormatPad</title>`
   );
 
 // ── 4. Measure gzipped sizes ─────────────────────────────────────────────────

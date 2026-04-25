@@ -12,6 +12,9 @@
 //   docs/styles/base.css
 //   docs/styles/katex.min.css
 //   docs/formatpad-mark.png
+//   docs/manifest.webmanifest
+//   docs/sw.js
+//   docs/icons/*.png
 //   docs/.nojekyll
 
 const esbuild = require('esbuild');
@@ -20,6 +23,10 @@ const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'docs');
+const PACKAGE = require('../package.json');
+// GitHub Pages currently serves this project at /FormatPad/. If the planned
+// formatpad.io root domain becomes primary, switch manifest start_url/scope
+// and file_handlers.action to "/" in src/web/manifest.webmanifest.
 
 function emptyDir(dir) {
   if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); return; }
@@ -33,6 +40,32 @@ function emptyDir(dir) {
 function copyFile(from, to) {
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to);
+}
+
+function copyDir(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, entry.name);
+    const dest = path.join(to, entry.name);
+    if (entry.isDirectory()) copyDir(src, dest);
+    else copyFile(src, dest);
+  }
+}
+
+function injectPwaHead(html) {
+  if (html.includes('rel="manifest"')) return html;
+  const pwaHead = [
+    '  <link rel="manifest" href="manifest.webmanifest">',
+    '  <meta name="theme-color" content="#0f172a">',
+    '  <meta name="apple-mobile-web-app-capable" content="yes">',
+    '  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+    '  <meta name="apple-mobile-web-app-title" content="FormatPad">',
+    '  <link rel="apple-touch-icon" href="icons/icon-192.png">',
+  ].join('\n');
+  if (html.includes('  <title>FormatPad</title>')) {
+    return html.replace('  <title>FormatPad</title>', `${pwaHead}\n  <title>FormatPad</title>`);
+  }
+  return html.replace('</head>', `${pwaHead}\n</head>`);
 }
 
 function buildIndexHtml(srcHtml) {
@@ -63,17 +96,40 @@ function buildIndexHtml(srcHtml) {
     '<script src="renderer.js"></script>'
   );
 
-  return html;
+  return injectPwaHead(html);
 }
 
-function main() {
+function copyPwaAssets() {
+  copyFile(
+    path.join(ROOT, 'src/web/manifest.webmanifest'),
+    path.join(OUT, 'manifest.webmanifest')
+  );
+  copyDir(
+    path.join(ROOT, 'src/web/icons'),
+    path.join(OUT, 'icons')
+  );
+
+  const katexFontUrls = fs.existsSync(path.join(OUT, 'styles', 'fonts'))
+    ? fs.readdirSync(path.join(OUT, 'styles', 'fonts'))
+        .filter(name => /\.(woff2?|ttf)$/i.test(name))
+        .sort()
+        .map(name => `styles/fonts/${name}`)
+    : [];
+
+  const sw = fs.readFileSync(path.join(ROOT, 'src/web/sw.js'), 'utf-8')
+    .replace(/__FORMATPAD_SW_VERSION__/g, PACKAGE.version)
+    .replace(/__FORMATPAD_KATEX_FONT_URLS__/g, JSON.stringify(katexFontUrls));
+  fs.writeFileSync(path.join(OUT, 'sw.js'), sw, 'utf-8');
+}
+
+async function main() {
   const minify = process.argv.includes('--minify');
 
   console.log('FormatPad web build → ' + path.relative(ROOT, OUT));
   emptyDir(OUT);
 
   // Bundle the renderer + adapter.
-  esbuild.buildSync({
+  await esbuild.build({
     entryPoints: [path.join(ROOT, 'src/web/entry.js')],
     bundle: true,
     outfile: path.join(OUT, 'renderer.js'),
@@ -83,10 +139,29 @@ function main() {
     sourcemap: false,
     target: ['chrome120', 'firefox115', 'safari17', 'edge120'],
     loader: { '.css': 'text', '.png': 'dataurl' },
+    plugins: [{
+      name: 'desktop-terminal-stub',
+      setup(build) {
+        build.onResolve({ filter: /^isomorphic-git$/ }, () => ({
+          path: path.join(ROOT, 'node_modules/isomorphic-git/index.js'),
+        }));
+        build.onResolve({ filter: /^@sentry\/electron\/renderer$/ }, () => ({
+          path: path.join(ROOT, 'src/web/sentry-renderer-stub.js'),
+        }));
+        build.onResolve({ filter: /^\.\/pty-view\.js$/ }, (args) => {
+          if (args.importer.replace(/\\/g, '/').endsWith('/src/renderer/terminal/panel.js')) {
+            return { path: path.join(ROOT, 'src/web/terminal-pty-stub.js') };
+          }
+          return undefined;
+        });
+      },
+    }],
     define: {
       'process.env.NODE_ENV': minify ? '"production"' : '"development"',
+      'process.env.FORMATPAD_WEB': '"true"',
+      'process.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN || ''),
       'process.env.PLAUSIBLE_DOMAIN': JSON.stringify(process.env.PLAUSIBLE_DOMAIN || ''),
-      'process.env.APP_VERSION': JSON.stringify(require('../package.json').version),
+      'process.env.APP_VERSION': JSON.stringify(PACKAGE.version),
     },
   });
 
@@ -104,12 +179,19 @@ function main() {
       copyFile(path.join(stylesDir, name), path.join(OUT, 'styles', name));
     }
   }
+  copyDir(
+    path.join(ROOT, 'node_modules/katex/dist/fonts'),
+    path.join(OUT, 'styles', 'fonts')
+  );
 
   // Welcome icon
   copyFile(
     path.join(ROOT, 'src/renderer/formatpad-mark.png'),
     path.join(OUT, 'formatpad-mark.png')
   );
+
+  // PWA assets
+  copyPwaAssets();
 
   // GitHub Pages: don't run through Jekyll
   fs.writeFileSync(path.join(OUT, '.nojekyll'), '', 'utf-8');
@@ -119,4 +201,7 @@ function main() {
   console.log('FormatPad web build complete.');
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

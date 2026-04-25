@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.github.com https://api.githubusercontent.com https://plausible.io; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
   <link rel="stylesheet" href="styles/katex.min.css">
   <link rel="stylesheet" href="styles/base.css">
   <title>FormatPad</title>
@@ -23,6 +23,9 @@
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
         <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"/>
       </svg>
+    </button>
+    <button id="btn-template" title="New from Template (Ctrl+Alt+N)">
+      <span class="fmt-mono">Tpl</span>
     </button>
     <button id="btn-open" title="Open File (Ctrl+O)" data-i18n-title="tooltip.open">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -56,6 +59,10 @@
         </svg>
       </button>
     </div>
+
+    <button id="btn-terminal" title="Terminal (Ctrl+`, Ctrl+Shift+` new)">
+      <span class="fmt-mono">&gt;_</span>
+    </button>
 
     <select id="lang-select"></select>
     <button id="btn-theme" title="Theme" data-i18n-title="tooltip.theme">
@@ -287,6 +294,7 @@
   <!-- Tab bar -->
   <div id="tab-bar">
     <div id="tab-list"></div>
+    <button id="btn-share" title="Share current tab" hidden>Share</button>
   </div>
 
   <!-- Main workspace -->
@@ -404,6 +412,8 @@
       <div id="customize-fields" class="hidden"></div>
     </div>
   </div>
+
+  <div id="command-palette-root"></div>
 
   <!-- Tab context menu -->
   <div id="tab-context-menu" class="hidden">

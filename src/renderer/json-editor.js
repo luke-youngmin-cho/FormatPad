@@ -65,6 +65,14 @@ export class JSONEditor {
 
     const scroll = document.createElement('div');
     scroll.className = 'jedit-scroll';
+    scroll.addEventListener('contextmenu', (event) => {
+      const node = event.target.closest('.jedit-node');
+      if (!node) return;
+      event.preventDefault();
+      window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', {
+        detail: { format: 'json', scope: 'node', pointer: node.dataset.jpointer || '' },
+      }));
+    });
 
     const wrap = document.createElement('div');
     wrap.className = 'jedit-tree';

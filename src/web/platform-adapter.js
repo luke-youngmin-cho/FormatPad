@@ -18,6 +18,13 @@ const SUPPORTED_EXTS = [
   'csv','tsv','toml','ini','conf','properties','env',
   'log','txt',
 ];
+const TRUSTED_URL_HOSTS = new Set([
+  'raw.githubusercontent.com',
+  'gist.githubusercontent.com',
+  'cdn.jsdelivr.net',
+]);
+const MAX_URL_BYTES = 10 * 1024 * 1024;
+const URL_FETCH_TIMEOUT_MS = 20_000;
 const IGNORED_DIRS = new Set(['node_modules','.git','.svn','__pycache__','dist','build','.next','.cache','.idea','.vscode']);
 const BINARY_EXTS = new Set([
   'exe','dll','so','dylib','bin','msi','app','class','jar',
@@ -47,6 +54,78 @@ function dirOf(p) {
 function baseOf(p) {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   return i < 0 ? p : p.slice(i + 1);
+}
+function safeDecode(value) {
+  try { return decodeURIComponent(value || ''); }
+  catch { return value || ''; }
+}
+function sanitizeFileName(name, fallback = 'shared.md') {
+  const cleaned = (name || fallback)
+    .split(/[\\/]/).pop()
+    .replace(/[<>:"|?*\x00-\x1f]/g, '-')
+    .trim();
+  return cleaned || fallback;
+}
+function inferNameFromUrl(url, fallback = 'shared.md') {
+  const pathName = safeDecode(url.pathname);
+  const name = pathName.split('/').filter(Boolean).pop();
+  return sanitizeFileName(name || fallback, fallback);
+}
+function formatBytes(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+function abortError(message) {
+  const err = new Error(message);
+  err.name = 'AbortError';
+  return err;
+}
+function isTrustedHost(hostname) {
+  return TRUSTED_URL_HOSTS.has(String(hostname || '').toLowerCase());
+}
+function assertHttpsUrl(url) {
+  if (url.protocol !== 'https:') throw new Error('HTTPS required for URL imports.');
+  const decodedSearch = safeDecode(url.search);
+  if (/(?:file:\/\/|data:)/i.test(decodedSearch)) {
+    throw new Error('URL imports cannot contain file:// or data: query values.');
+  }
+}
+function parseUrl(raw) {
+  const url = new URL(String(raw || '').trim());
+  assertHttpsUrl(url);
+  return url;
+}
+function githubBlobToRaw(input) {
+  let parts;
+  try {
+    const url = new URL(input);
+    if (url.hostname.toLowerCase() !== 'github.com') return null;
+    parts = url.pathname.split('/').filter(Boolean);
+  } catch {
+    parts = String(input || '').split('/').filter(Boolean);
+  }
+  const blobIndex = parts.indexOf('blob');
+  if (blobIndex !== 2 || parts.length < 5) return null;
+  const owner = parts[0];
+  const repo = parts[1];
+  const ref = parts[3];
+  const filePath = parts.slice(4).join('/');
+  return {
+    url: new URL(`https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${filePath}`),
+    name: sanitizeFileName(filePath.split('/').pop() || `${repo}.md`),
+  };
+}
+function gistIdFromInput(input) {
+  const raw = String(input || '').trim();
+  try {
+    const url = new URL(raw);
+    if (url.hostname.toLowerCase() !== 'gist.github.com') return null;
+    const parts = url.pathname.split('/').filter(Boolean);
+    return parts.length >= 2 ? parts[1] : parts[0] || null;
+  } catch {
+    const parts = raw.split('/').filter(Boolean);
+    return parts.length >= 2 ? parts[1] : parts[0] || null;
+  }
 }
 
 // Renderer treats filePath as an opaque string. Single-file opens use
@@ -144,6 +223,138 @@ async function readFileFromHandle(handle) {
   return await f.text();
 }
 
+function gitFsError(err) {
+  return { error: err?.name || err?.message || String(err) };
+}
+
+function normalizeGitFsPath(path) {
+  const raw = String(path || '/').replace(/\\/g, '/');
+  const parts = raw.split('/').filter(Boolean);
+  if (parts.includes('..')) throw new Error('Parent paths are not allowed');
+  return '/' + parts.join('/');
+}
+
+async function getGitFsDirHandle(dirPath, create = false) {
+  if (!workspaceDirHandle) throw new Error('No workspace');
+  const normalized = normalizeGitFsPath(dirPath);
+  if (normalized === '/') return workspaceDirHandle;
+  let handle = workspaceDirHandle;
+  let cursor = '';
+  for (const part of normalized.split('/').filter(Boolean)) {
+    handle = await handle.getDirectoryHandle(part, { create });
+    cursor += '/' + part;
+    wsDirHandles.set(cursor || '/', handle);
+  }
+  return handle;
+}
+
+async function getGitFsFileHandle(filePath, create = false) {
+  const normalized = normalizeGitFsPath(filePath);
+  const parent = dirOf(normalized);
+  const name = baseOf(normalized);
+  const parentHandle = await getGitFsDirHandle(parent, create);
+  const handle = await parentHandle.getFileHandle(name, { create });
+  wsFileHandles.set(normalized, handle);
+  return handle;
+}
+
+async function gitFsReadFile(filePath, options) {
+  try {
+    const handle = await getGitFsFileHandle(filePath, false);
+    const file = await handle.getFile();
+    const encoding = typeof options === 'string' ? options : options?.encoding;
+    if (encoding) return await file.text();
+    return new Uint8Array(await file.arrayBuffer());
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
+async function gitFsWriteFile(filePath, data) {
+  try {
+    const normalized = normalizeGitFsPath(filePath);
+    const handle = await getGitFsFileHandle(normalized, true);
+    let payload = data;
+    if (data?.type === 'Buffer' && Array.isArray(data.data)) payload = new Uint8Array(data.data);
+    else if (Array.isArray(data)) payload = new Uint8Array(data);
+    await saveViaHandle(handle, payload);
+    wsFileHandles.set(normalized, handle);
+    return { success: true };
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
+async function gitFsUnlink(filePath) {
+  try {
+    const normalized = normalizeGitFsPath(filePath);
+    const parentHandle = await getGitFsDirHandle(dirOf(normalized), false);
+    await parentHandle.removeEntry(baseOf(normalized));
+    wsFileHandles.delete(normalized);
+    return { success: true };
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
+async function gitFsReaddir(dirPath, options) {
+  try {
+    const normalized = normalizeGitFsPath(dirPath);
+    const handle = await getGitFsDirHandle(normalized, false);
+    const entries = [];
+    for await (const [name, entry] of handle.entries()) {
+      if (options?.withFileTypes) {
+        entries.push({ name, type: entry.kind === 'directory' ? 'dir' : 'file' });
+      } else {
+        entries.push(name);
+      }
+    }
+    return entries.sort((a, b) => String(a.name || a).localeCompare(String(b.name || b)));
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
+async function gitFsMkdir(dirPath, options) {
+  try {
+    await getGitFsDirHandle(dirPath, !!options?.recursive || true);
+    return { success: true };
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
+async function gitFsRmdir(dirPath) {
+  try {
+    const normalized = normalizeGitFsPath(dirPath);
+    const parentHandle = await getGitFsDirHandle(dirOf(normalized), false);
+    await parentHandle.removeEntry(baseOf(normalized), { recursive: false });
+    wsDirHandles.delete(normalized);
+    return { success: true };
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
+async function gitFsStat(targetPath) {
+  try {
+    const normalized = normalizeGitFsPath(targetPath);
+    if (normalized === '/') {
+      return { type: 'dir', size: 0, mode: 0o040000, mtimeMs: Date.now(), ctimeMs: Date.now() };
+    }
+    try {
+      const handle = await getGitFsFileHandle(normalized, false);
+      const file = await handle.getFile();
+      return { type: 'file', size: file.size, mode: 0o100644, mtimeMs: file.lastModified, ctimeMs: file.lastModified };
+    } catch {
+      await getGitFsDirHandle(normalized, false);
+      return { type: 'dir', size: 0, mode: 0o040000, mtimeMs: Date.now(), ctimeMs: Date.now() };
+    }
+  } catch (err) {
+    return gitFsError(err);
+  }
+}
+
 async function buildLinkIndexFull() {
   linkIndexForward = new Map();
   linkIndexBack = new Map();
@@ -205,12 +416,200 @@ function indexMarkdown(filePath, content) {
 
 // ==================== Single-file open / save ====================
 let loadFileCb = null;
+let urlConfirmCb = null;
+let urlErrorCb = null;
 
 async function fireLoad(file, handle) {
   const content = await file.text();
   const fileName = handle ? handle.name : file.name;
   const filePath = handle ? registerSingleFileHandle(handle) : noHandlePath(fileName);
   if (loadFileCb) loadFileCb({ filePath, dirPath: null, content });
+}
+
+async function openFileHandles(handles = []) {
+  let opened = 0;
+  for (const handle of handles || []) {
+    if (!handle || handle.kind !== 'file') continue;
+    const file = await handle.getFile();
+    if (isBinary(file.name)) continue;
+    await fireLoad(file, handle);
+    opened++;
+  }
+  return opened > 0;
+}
+
+async function fireLoadText({ content, name, sourceUrl, source = 'url' }) {
+  if (!loadFileCb) return;
+  loadFileCb({
+    filePath: null,
+    dirPath: null,
+    content,
+    title: sanitizeFileName(name || 'shared.md'),
+    source,
+    sourceUrl,
+    savedContent: '',
+    forceUnsaved: true,
+  });
+}
+
+async function confirmUrlFetch(detail) {
+  if (urlConfirmCb) return await urlConfirmCb(detail);
+  return window.confirm(detail.message || `Fetch file from ${detail.hostname}?`);
+}
+
+async function fetchWithTimeout(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('URL fetch timed out after 20 seconds.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readResponseTextWithLimit(response, maxBytes = MAX_URL_BYTES) {
+  const failLarge = () => new Error(`URL import exceeds the ${formatBytes(maxBytes)} safety limit.`);
+  if (!response.body?.getReader) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > maxBytes) throw failLarge();
+    return new TextDecoder().decode(buffer);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw failLarge();
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join('');
+  } finally {
+    reader.releaseLock?.();
+  }
+}
+
+async function fetchUrlTextContent(url, { skipHostConfirmation = false } = {}) {
+  assertHttpsUrl(url);
+  if (!skipHostConfirmation && !isTrustedHost(url.hostname)) {
+    const ok = await confirmUrlFetch({
+      kind: 'host',
+      hostname: url.hostname,
+      url: url.href,
+      message: `Fetch file from ${url.hostname}?`,
+    });
+    if (!ok) throw abortError('URL import canceled.');
+  }
+
+  const response = await fetchWithTimeout(url.href);
+  if (!response.ok) throw new Error(`URL fetch failed (${response.status} ${response.statusText}).`);
+
+  const finalUrl = response.url ? new URL(response.url) : url;
+  assertHttpsUrl(finalUrl);
+  if (!skipHostConfirmation && !isTrustedHost(finalUrl.hostname) && finalUrl.hostname !== url.hostname) {
+    const ok = await confirmUrlFetch({
+      kind: 'host',
+      hostname: finalUrl.hostname,
+      url: finalUrl.href,
+      message: `Fetch redirected file from ${finalUrl.hostname}?`,
+    });
+    if (!ok) throw abortError('URL import canceled.');
+  }
+
+  const length = Number(response.headers.get('content-length') || 0);
+  if (length > MAX_URL_BYTES) {
+    throw new Error(`URL import is ${formatBytes(length)}, above the ${formatBytes(MAX_URL_BYTES)} safety limit.`);
+  }
+
+  return {
+    content: await readResponseTextWithLimit(response),
+    finalUrl,
+  };
+}
+
+async function fetchTextUrl(url, { name, sourceUrl, skipHostConfirmation = false } = {}) {
+  const { content, finalUrl } = await fetchUrlTextContent(url, { skipHostConfirmation });
+
+  await fireLoadText({
+    content,
+    name: name || inferNameFromUrl(finalUrl),
+    sourceUrl: sourceUrl || finalUrl.href,
+  });
+  return { success: true, count: 1 };
+}
+
+async function openGitHubBlob(input) {
+  const raw = githubBlobToRaw(input);
+  if (!raw) throw new Error('Invalid GitHub blob URL.');
+  return await fetchTextUrl(raw.url, { name: raw.name, sourceUrl: raw.url.href, skipHostConfirmation: true });
+}
+
+async function openGist(input) {
+  const gistId = gistIdFromInput(input);
+  if (!gistId) throw new Error('Invalid Gist URL.');
+  const apiUrl = new URL(`https://api.github.com/gists/${gistId}`);
+  const response = await fetchWithTimeout(apiUrl.href, {
+    headers: { Accept: 'application/vnd.github+json' },
+  });
+  if (!response.ok) throw new Error(`Gist fetch failed (${response.status} ${response.statusText}).`);
+  const gist = await response.json();
+  const files = Object.values(gist.files || {}).filter((file) => file?.raw_url);
+  if (files.length === 0) throw new Error('Gist has no raw files to open.');
+
+  let count = 0;
+  for (const file of files) {
+    const rawUrl = parseUrl(file.raw_url);
+    await fetchTextUrl(rawUrl, {
+      name: file.filename || inferNameFromUrl(rawUrl),
+      sourceUrl: rawUrl.href,
+      skipHostConfirmation: true,
+    });
+    count++;
+  }
+  return { success: true, count };
+}
+
+async function openUrlSource(input, options = {}) {
+  const raw = String(input || '').trim();
+  if (!raw) throw new Error('URL is empty.');
+
+  const githubRaw = githubBlobToRaw(raw);
+  if (githubRaw) {
+    return await fetchTextUrl(githubRaw.url, {
+      name: options.name || githubRaw.name,
+      sourceUrl: githubRaw.url.href,
+      skipHostConfirmation: true,
+    });
+  }
+
+  const gistId = gistIdFromInput(raw);
+  if (gistId && /^(?:https:\/\/gist\.github\.com\/|[a-f0-9]{6,}|[^/]+\/[a-f0-9]{6,})/i.test(raw)) {
+    return await openGist(raw);
+  }
+
+  const url = parseUrl(raw);
+  return await fetchTextUrl(url, { name: options.name || inferNameFromUrl(url), sourceUrl: url.href });
+}
+
+async function openUrlFromParams(paramsLike) {
+  const params = paramsLike instanceof URLSearchParams
+    ? paramsLike
+    : new URLSearchParams(String(paramsLike || '').replace(/^\?/, ''));
+  if (params.has('github')) return await openGitHubBlob(params.get('github'));
+  if (params.has('gist')) return await openGist(params.get('gist'));
+  if (params.has('src')) return await openUrlSource(params.get('src'), { name: params.get('name') || undefined });
+  return { success: false, count: 0 };
 }
 
 async function pickAndOpen() {
@@ -270,6 +669,10 @@ async function saveViaHandle(handle, content) {
 }
 
 async function saveFile(filePath, content) {
+  if (filePath === 'localStorage:fp-user-snippets') {
+    localStorage.setItem('fp-user-snippets', content);
+    return true;
+  }
   // Workspace file?
   const wsHandle = wsFileHandles.get(filePath);
   if (wsHandle) {
@@ -282,7 +685,9 @@ async function saveFile(filePath, content) {
     try { await saveViaHandle(single, content); return true; }
     catch (err) { console.warn('single-file saveFile failed', err); return false; }
   }
-  return false;
+  const fallbackName = sanitizeFileName(baseOf(filePath || '') || defaultSaveName(), defaultSaveName());
+  downloadBlob(fallbackName, new Blob([content], { type: 'text/plain;charset=utf-8' }));
+  return true;
 }
 
 async function saveFileAs(content) {
@@ -618,7 +1023,24 @@ const adapter = {
   fsaDirSupported: FSA_DIR_SUPPORTED,
 
   onLoadMarkdown(cb) { loadFileCb = cb; },
+  setUrlConfirmHandler(cb) { urlConfirmCb = cb; },
+  setUrlErrorHandler(cb) { urlErrorCb = cb; },
+  openUrl: openUrlSource,
+  openUrlFromParams,
+  async fetchUrlText(raw, options = {}) {
+    const url = parseUrl(raw);
+    const { content, finalUrl } = await fetchUrlTextContent(url, options);
+    return { content, url: finalUrl.href };
+  },
+  openTextFromUrl: fireLoadText,
+  showUrlError(err) {
+    const message = err?.message || String(err);
+    if (err?.name === 'AbortError') return;
+    if (urlErrorCb) { urlErrorCb(err); return; }
+    window.alert(message);
+  },
   openFileDialog() { pickAndOpen(); },
+  openFileHandles,
   getPathForFile(file) { return file; },
   dropFile(fileOrPath) {
     if (fileOrPath && typeof fileOrPath.text === 'function') fireLoad(fileOrPath, null);
@@ -667,6 +1089,16 @@ const adapter = {
   // Workspace
   openFolderDialog,
   readDirectory,
+  gitFs: {
+    readFile: gitFsReadFile,
+    writeFile: gitFsWriteFile,
+    unlink: gitFsUnlink,
+    readdir: gitFsReaddir,
+    mkdir: gitFsMkdir,
+    rmdir: gitFsRmdir,
+    stat: gitFsStat,
+    lstat: gitFsStat,
+  },
   watchDirectory() { return Promise.resolve(); },
   unwatchDirectory() { return Promise.resolve(); },
   onDirectoryChanged() { /* no file watcher on web; Refresh button re-reads */ },

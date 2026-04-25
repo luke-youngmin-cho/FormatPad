@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*-beta.*'
 
 jobs:
   build:
@@ -15,14 +15,18 @@ jobs:
         include:
           - os: windows-latest
             build_script: dist:win
+            manifest_name: formatpad-release-manifest-windows.json
             artifacts: |
               release/*.exe
               release/*.exe.blockmap
               release/latest.yml
+              release/formatpad-release-manifest-windows.json
           - os: macos-latest
             build_script: dist:mac
+            manifest_name: formatpad-release-manifest-macos.json
             artifacts: |
               release/*.dmg
+              release/formatpad-release-manifest-macos.json
     permissions:
       contents: write
     steps:
@@ -49,10 +53,40 @@ jobs:
 
       - run: npm ci
 
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Build web release bundle
+        run: npm run build:web:min
+
+      - name: Bundle size gate
+        run: npm run size
+
+      - name: Electron smoke tests
+        run: npx playwright test tests/e2e/app-launch.spec.ts tests/e2e/editor-save.spec.ts --project=electron --workers=1 --reporter=line
+
+      - name: Write updater verification public key
+        run: npm run release:write-updater-key
+        env:
+          FORMATPAD_UPDATER_PUBLIC_KEY: ${{ vars.FORMATPAD_UPDATER_PUBLIC_KEY }}
+
       - run: npm run ${{ matrix.build_script }}
+
+      - name: Create signed release manifest
+        run: npm run release:manifest
+        env:
+          FORMATPAD_RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.FORMATPAD_RELEASE_SIGNING_PRIVATE_KEY }}
+          FORMATPAD_RELEASE_MANIFEST_NAME: ${{ matrix.manifest_name }}
 
       - name: Upload installers to release
         uses: softprops/action-gh-release@v2
         with:
+          name: FormatPad ${{ github.ref_name }}
+          prerelease: true
+          make_latest: false
+          generate_release_notes: true
           files: ${{ matrix.artifacts }}
           fail_on_unmatched_files: true

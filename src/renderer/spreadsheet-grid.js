@@ -171,6 +171,17 @@ export class SpreadsheetGrid {
     }
   }
 
+  showFilterChip(label) {
+    if (!this.toolbarEl) return;
+    let chip = this.toolbarEl.querySelector('.sgrid-ai-filter-chip');
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'sgrid-ai-filter-chip';
+      this.statsEl.insertAdjacentElement('afterend', chip);
+    }
+    chip.textContent = 'AI filter: ' + String(label || '').slice(0, 80);
+  }
+
   attachEvents() {
     const root = this.rootEl;
 
@@ -1014,13 +1025,29 @@ export class SpreadsheetGrid {
       { label: 'Delete column(s)', act: 'del-col' },
       { label: '-' },
       { label: 'Rename column', act: 'rename-col' },
+      { label: '-' },
+      { label: 'AI: detect type + outliers', aiAction: 'csv.type-outliers' },
+      { label: 'AI: SQL from selection', aiAction: 'csv.sql-generate' },
+      { label: 'AI: open actions', aiOpen: true },
     ];
     this.ctxMenuEl.innerHTML = '';
     for (const it of items) {
       if (it.label === '-') { const sep = document.createElement('div'); sep.className = 'sgrid-ctx-sep'; this.ctxMenuEl.appendChild(sep); continue; }
       const b = document.createElement('button');
       b.textContent = it.label;
-      b.addEventListener('click', () => { this.hideContextMenu(); this.runAction(it.act); this.rootEl.focus(); });
+      b.addEventListener('click', () => {
+        this.hideContextMenu();
+        if (it.aiAction) {
+          window.dispatchEvent(new CustomEvent('formatpad-ai-run-action', {
+            detail: { id: it.aiAction, scope: it.aiAction === 'csv.type-outliers' ? 'column' : 'selection', column: this.active.col, selection: { ...this.sel } },
+          }));
+        } else if (it.aiOpen) {
+          window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', { detail: { scope: 'document', column: this.active.col, selection: { ...this.sel } } }));
+        } else {
+          this.runAction(it.act);
+        }
+        this.rootEl.focus();
+      });
       this.ctxMenuEl.appendChild(b);
     }
     const rootRect = this.rootEl.getBoundingClientRect();
