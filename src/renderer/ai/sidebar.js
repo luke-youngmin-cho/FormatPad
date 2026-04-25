@@ -127,6 +127,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   let activeMode = 'chat';
   let sending = false;
   let historyQuery = '';
+  let chatAbortController = null;
   let actionRunning = null;
   let actionRunSeq = 0;
   let actionStatus = '';
@@ -571,17 +572,36 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     });
   }
 
-  async function streamAssistantResponse({ requestMessages, assistantMsg, tools = [] }) {
+  async function streamAssistantResponse({ requestMessages, assistantMsg, tools = [], abortSignal, timeoutMs = 120000 }) {
     const toolCalls = [];
-    for await (const chunk of chatWithCurrentProvider({ requestMessages, tools })) {
-      if (chunk.type === 'text') {
-        assistantMsg.content += chunk.delta;
-        renderMessages();
-      } else if (chunk.type === 'tool_call') {
-        toolCalls.push(chunk);
+    const timeoutController = new AbortController();
+    const timeoutId = timeoutMs > 0
+      ? setTimeout(() => abortController(
+        timeoutController,
+        makeAbortError('AI request timed out. Try a smaller document or cancel and retry.', 'TimeoutError'),
+      ), timeoutMs)
+      : null;
+    const linked = linkAbortSignals([abortSignal, timeoutController.signal]);
+    try {
+      throwIfSignalAborted(linked.signal);
+      for await (const chunk of chatWithCurrentProvider({ requestMessages, tools, abortSignal: linked.signal })) {
+        throwIfSignalAborted(linked.signal);
+        if (chunk.type === 'text') {
+          assistantMsg.content += chunk.delta;
+          renderMessages();
+        } else if (chunk.type === 'tool_call') {
+          toolCalls.push(chunk);
+        }
       }
+      throwIfSignalAborted(linked.signal);
+      return toolCalls;
+    } catch (err) {
+      if (linked.signal.aborted) throw linked.signal.reason || err || makeAbortError();
+      throw err;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      linked.cleanup();
     }
-    return toolCalls;
   }
 
   function formatToolResultsForModel(results) {
@@ -642,8 +662,23 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     return false;
   }
 
+  function setChatSending(next, controller = null) {
+    sending = next;
+    chatAbortController = next ? controller : null;
+    sendBtn.disabled = false;
+    sendBtn.textContent = next ? 'Stop' : 'Send';
+  }
+
+  function cancelChatResponse() {
+    if (!chatAbortController) return;
+    abortController(chatAbortController, makeAbortError('AI chat canceled.'));
+  }
+
   async function sendMessage() {
-    if (sending) return;
+    if (sending) {
+      cancelChatResponse();
+      return;
+    }
     const raw = composer.value.trim();
     if (!raw) return;
     if (await handleSlash(raw)) {
@@ -653,10 +688,6 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     }
 
     const active = hooks.getActiveTab?.();
-    if (!active) {
-      hooks.notify?.('AI', new Error('Open a document tab before chatting.'));
-      return;
-    }
 
     const priorHistory = [...messages];
     const userMsg = makeMessage('user', raw);
@@ -668,8 +699,8 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const assistantMsg = makeMessage('assistant', '');
     messages.push(assistantMsg);
     renderMessages();
-    sending = true;
-    sendBtn.disabled = true;
+    const controller = new AbortController();
+    setChatSending(true, controller);
 
     try {
       const workspaceFiles = includeTree ? await hooks.getWorkspaceFiles?.() : [];
@@ -688,9 +719,12 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
         requestMessages,
         assistantMsg,
         tools: mcpTools,
+        abortSignal: controller.signal,
       });
+      throwIfSignalAborted(controller.signal);
       if (toolCalls.length) {
         const toolResults = await mcpController.resolveToolCalls(toolCalls);
+        throwIfSignalAborted(controller.signal);
         const toolText = formatToolResultsForModel(toolResults);
         assistantMsg.content += `${assistantMsg.content ? '\n\n' : ''}MCP tool results received. Preparing final answer...\n`;
         renderMessages();
@@ -702,27 +736,27 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
           ],
           assistantMsg,
           tools: [],
+          abortSignal: controller.signal,
         });
       }
       track?.('ai_action', {
-        format: active.viewType || 'unknown',
+        format: active?.viewType || 'unknown',
         action_name: 'chat',
         provider: provider.id,
         success: 'true',
       });
     } catch (err) {
-      assistantMsg.content += `${assistantMsg.content ? '\n\n' : ''}Error: ${err.message || String(err)}`;
-      hooks.notify?.('AI', err);
+      assistantMsg.content += `${assistantMsg.content ? '\n\n' : ''}${isCancelError(err) ? 'Canceled.' : `Error: ${err.message || String(err)}`}`;
+      if (!isAbortError(err)) hooks.notify?.('AI', err);
       track?.('ai_action', {
-        format: active.viewType || 'unknown',
+        format: active?.viewType || 'unknown',
         action_name: 'chat',
         provider: provider.id,
         success: 'false',
       });
-      track?.('error', { type: err.name || 'AIError', format: active.viewType || 'unknown' });
+      track?.('error', { type: err.name || 'AIError', format: active?.viewType || 'unknown' });
     } finally {
-      sending = false;
-      sendBtn.disabled = false;
+      setChatSending(false);
       renderMessages();
       saveConversation();
     }

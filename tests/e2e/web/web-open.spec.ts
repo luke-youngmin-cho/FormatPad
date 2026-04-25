@@ -1,44 +1,37 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
-import * as http from 'http';
 import * as path from 'path';
 import { startStaticServer } from '../../helpers';
 
 const docsDir = path.resolve('docs');
 
-async function startHangingAiServer(): Promise<{ endpoint: string; close: () => Promise<void> }> {
-  const server = http.createServer((req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-    if (req.method === 'POST' && req.url === '/chat/completions') {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      res.write('data: {"choices":[{"delta":{"content":"still running"}}]}\n\n');
-      return;
-    }
-    res.writeHead(404);
-    res.end('not found');
-  });
+async function installHangingAiMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('fp-ai-provider', 'openai-compatible');
+    localStorage.setItem('fp-ai-endpoint-openai-compatible', 'https://formatpad.test');
 
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as { port: number }).port;
-  return {
-    endpoint: `http://127.0.0.1:${port}`,
-    close: () => new Promise(resolve => {
-      server.close(() => resolve());
-      server.closeAllConnections?.();
-      setTimeout(resolve, 1000).unref?.();
-    }),
-  };
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.startsWith('https://formatpad.test/chat/completions')) {
+        return originalFetch(input, init);
+      }
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"still running"}}]}\n\n'));
+          init?.signal?.addEventListener('abort', () => {
+            controller.error(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        },
+      });
+      return Promise.resolve(new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }));
+    };
+  });
 }
 
 test('web build loads, new-file works, no console errors', async ({ page }) => {
@@ -152,16 +145,12 @@ test('AI edit action cancel stops a hanging provider response', async ({ page })
     return;
   }
 
-  const ai = await startHangingAiServer();
   const { url, close } = await startStaticServer(docsDir);
-  await page.addInitScript((endpoint) => {
-    localStorage.setItem('fp-ai-provider', 'openai-compatible');
-    localStorage.setItem('fp-ai-endpoint-openai-compatible', endpoint as string);
-  }, ai.endpoint);
+  await installHangingAiMock(page);
 
   try {
     await page.goto(url);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
       await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad"}'], 'sample.json', { type: 'application/json' }));
     });
@@ -177,6 +166,29 @@ test('AI edit action cancel stops a hanging provider response', async ({ page })
     await expect(page.locator('.ai-action-status')).toContainText('canceled');
   } finally {
     await close();
-    await ai.close();
+  }
+});
+
+test('AI chat can run without an active document and can be canceled', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installHangingAiMock(page);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('#btn-ai').click();
+    await page.locator('.ai-composer').fill('Can you answer without a document?');
+    await page.locator('.ai-send').click();
+    await expect(page.locator('.ai-send')).toHaveText('Stop');
+    await page.locator('.ai-send').click();
+    await expect(page.locator('.ai-send')).toHaveText('Send');
+    await expect(page.locator('.ai-log')).toContainText('Canceled.');
+  } finally {
+    await close();
   }
 });
