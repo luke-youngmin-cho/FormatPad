@@ -123,6 +123,14 @@ body.zen-mode .cm-content {
   cursor: pointer; transition: background 0.15s, color 0.15s;
 }
 #toolbar button:hover { background: var(--hover-bg); color: var(--text-primary); }
+#toolbar button.active {
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  color: var(--accent-color);
+}
+#toolbar button .fmt-mono {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
 
 .toolbar-sep { width: 1px; height: 18px; background: var(--border-color); margin: 0 4px; -webkit-app-region: no-drag; }
 
@@ -1641,6 +1649,54 @@ body.json-diff-mode #preview-pane {
   border-color: color-mix(in srgb, var(--accent-color) 52%, var(--border-color));
   background: color-mix(in srgb, var(--accent-color) 10%, transparent);
   color: var(--accent-color);
+}
+.git-command-panel {
+  display: grid;
+  gap: 14px;
+  min-width: min(460px, 76vw);
+}
+.git-command-summary {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+.git-command-summary strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.git-command-summary span {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.git-command-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.git-command-actions button {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.git-command-actions button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+  color: var(--text-primary);
+}
+.git-command-actions button.primary {
+  border-color: color-mix(in srgb, var(--accent-color) 65%, var(--border-color));
+  color: var(--accent-color);
+}
+.git-command-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 .snippet-picker {
   display: grid;

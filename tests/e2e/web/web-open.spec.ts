@@ -25,6 +25,20 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
 
   // Toolbar must be present
   await expect(page.locator('#toolbar')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#btn-ai')).toBeVisible();
+  await expect(page.locator('#btn-mcp')).toBeVisible();
+  await expect(page.locator('#btn-git')).toBeVisible();
+
+  await page.locator('#btn-ai').click();
+  await expect(page.locator('.ai-sidebar')).toBeVisible();
+
+  await page.locator('#btn-mcp').click();
+  await expect(page.locator('.ai-mcp-panel')).toBeVisible();
+  await expect(page.locator('.ai-mcp-panel')).toContainText('MCP is desktop-only');
+
+  await page.locator('#btn-git').click();
+  await expect(page.locator('#fmt-modal')).toContainText('Git Status and Commands');
+  await page.locator('#fmt-modal-close').click();
 
   // Create a new file
   await page.keyboard.press('Control+n');

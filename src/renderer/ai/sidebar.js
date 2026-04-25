@@ -952,21 +952,27 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     }
   }
 
+  function openMode(mode) {
+    activeMode = mode;
+    toggle(true);
+    renderMode();
+    if (mode === 'chat') composer.focus();
+  }
+
   function startNewChat() {
     messages = [];
     currentConversation = conversationStore.create();
-    activeMode = 'chat';
-    toggle(true);
-    renderMode();
+    openMode('chat');
     renderMessages();
     loadHistory();
-    composer.focus();
   }
 
   function openActionsMode() {
-    activeMode = 'actions';
-    toggle(true);
-    renderMode();
+    openMode('actions');
+  }
+
+  function openMcpMode() {
+    openMode('mcp');
   }
 
   function runLastActionCommand() {
@@ -1105,8 +1111,12 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
 
   return {
     toggle,
+    openChat() {
+      openMode('chat');
+    },
     newChat: startNewChat,
     openActions: openActionsMode,
+    openMcp: openMcpMode,
     openSettings() {
       toggle(true);
       openProviderSettings();
