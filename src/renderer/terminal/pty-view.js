@@ -330,6 +330,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   let removePtyListener = null;
   let restored = false;
   let draftText = '';
+  let ptyStatus = available ? { available: true } : { available: false, reason: 'Full terminal is available only in the Electron desktop app.' };
 
   function defaultCwd() {
     return hooks.getWorkspacePath?.() || hooks.getActiveTab?.()?.dirPath || '';
@@ -423,10 +424,10 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     const add = el('button', 'terminal-tab terminal-tab-add', '+');
     add.type = 'button';
     add.title = 'New terminal (Ctrl+Shift+`)';
-    add.disabled = !available;
+    add.disabled = !available || ptyStatus.available === false;
     add.addEventListener('click', () => newTerminal());
     tabStrip.appendChild(add);
-    setControlsEnabled(available);
+    setControlsEnabled(available && ptyStatus.available !== false);
     updateEmptyState();
     updateBlockCount();
   }
@@ -465,8 +466,27 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     });
   }
 
+  async function ensurePtyAvailable() {
+    if (!available) {
+      setStatus(ptyStatus.reason);
+      setControlsEnabled(false);
+      return false;
+    }
+    ptyStatus = await window.pty.status().catch(err => ({
+      available: false,
+      reason: err.message || String(err),
+    }));
+    if (!ptyStatus.available) {
+      setStatus(ptyStatus.reason || 'Integrated terminal is unavailable on this build.');
+      setControlsEnabled(false);
+      return false;
+    }
+    return true;
+  }
+
   async function ensureShells() {
-    if (!available || shells.length) return shells;
+    if (shells.length) return shells;
+    if (!await ensurePtyAvailable()) return [];
     shells = await window.pty.shells();
     shellSelect.innerHTML = '';
     for (const shell of shells) {
@@ -547,8 +567,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   }
 
   async function newTerminal(options = {}) {
-    if (!available) {
-      setStatus('Terminal is desktop-only.');
+    if (!await ensurePtyAvailable()) {
       return null;
     }
     try {
@@ -613,7 +632,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   }
 
   async function restoreSaved() {
-    if (!available || restored) return;
+    if (restored || !await ensurePtyAvailable()) return;
     restored = true;
     try {
       await ensureShells();
@@ -649,9 +668,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   }
 
   async function activate() {
-    if (!available) {
-      setStatus('Full terminal is available only in the Electron desktop app.');
-      setControlsEnabled(false);
+    if (!await ensurePtyAvailable()) {
       return;
     }
     await ensureShells();

@@ -85,7 +85,7 @@ All local. No cloud, no subscription, no account.
 ### Platform
 - Windows NSIS installer (multi-language), registers as default handler
   for 20+ extensions
-- macOS universal DMG (arm64 + x64)
+- macOS 11 Big Sur or newer universal DMG (arm64 + x64)
 - In-app auto-update via GitHub Releases API
 
 ## Keyboard shortcuts
@@ -165,12 +165,12 @@ schema is:
 No install needed — open
 [luke-youngmin-cho.github.io/FormatPad](https://luke-youngmin-cho.github.io/FormatPad/).
 
-FormatPad Web is also installable as a PWA in Chromium-based browsers. Open
-it once online, accept the browser install prompt on a later visit, and the
-app shell remains available for offline launch/editing. Network-backed
-features such as URL fetches, AI providers, GitHub APIs, and MCP-related
-actions still require connectivity and surface normal error messages while
-offline.
+FormatPad Web is also installable as a PWA. Chromium-based browsers show the
+native install prompt on a later visit; Safari users get an in-app hint for
+Add to Dock / Add to Home Screen. The app shell remains available for offline
+launch/editing after install. Network-backed features such as URL fetches, AI
+providers, GitHub APIs, and MCP-related actions still require connectivity and
+surface normal error messages while offline.
 
 Chromium-based browsers (Chrome, Edge, Arc, Opera) get everything the
 desktop app offers except OS integration: folder browsing, cross-file
@@ -180,9 +180,9 @@ Firefox and Safari work for single-file open and Save As via a download;
 Open Folder surfaces a clear "needs Chromium" message rather than
 silently failing.
 
-The current GitHub Pages manifest is scoped to `/FormatPad/`. If the planned
-root domain (`formatpad.io`) becomes the primary deployment target, switch the
-manifest `start_url`, `scope`, and `file_handlers.action` to `/`.
+The web manifest uses relative `start_url`, `scope`, and `file_handlers.action`
+values, so the same artifact can be served from GitHub Pages, localhost, or a
+future root domain.
 
 #### Share a file via URL
 
@@ -194,7 +194,7 @@ https://luke-youngmin-cho.github.io/FormatPad/?gist=<gist_id>
 https://luke-youngmin-cho.github.io/FormatPad/?src=https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
 ```
 
-Use the **Share** button to copy a `?fragment=` snapshot link for the current
+Use the **Share** button to copy a `#fragment=` snapshot link for the current
 tab. URL-loaded and fragment-loaded tabs are marked unsaved, so saving always
 prompts for a local filename. Only HTTPS URLs are accepted; trusted hosts open
 directly, and other hosts ask for confirmation before fetching.
@@ -209,9 +209,15 @@ restart, and the in-app auto-updater.
 
 ### Windows
 
-Run the `.exe` installer and follow the setup wizard.
+Run the `.exe` installer and follow the setup wizard. Windows builds support
+Windows 10/11 x64, and the release pipeline also produces Windows ARM64
+installers for Windows 11 ARM devices.
 
 ### macOS
+
+FormatPad Desktop requires macOS 11 Big Sur or newer because the current
+Electron runtime no longer supports Catalina. Catalina users should use
+FormatPad Web in Safari/Chrome/Firefox instead.
 
 Mount the `.dmg` and launch FormatPad directly from the DMG, or drag it to
 `/Applications` (or any writable location like `~/Desktop/`) first.

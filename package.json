@@ -23,6 +23,7 @@
     "test:ui": "playwright test --ui",
     "test:electron": "playwright test --project=electron",
     "test:web": "playwright test --project=web-chromium",
+    "test:web:compat": "playwright test --project=web-chromium --project=web-firefox --project=web-webkit",
     "lh": "npx --yes lighthouse http://localhost:4173 --preset=pwa --chrome-flags='--headless=new' --quiet --output=html --output-path=./lighthouse-report.html"
   },
   "author": "",

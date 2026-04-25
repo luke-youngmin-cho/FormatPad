@@ -2,11 +2,36 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const pty = require('@homebridge/node-pty-prebuilt-multiarch');
 const { filterSecrets, isInsidePath } = require('./runner');
 
 const DEFAULT_COLS = 100;
 const DEFAULT_ROWS = 28;
+let ptyModule = null;
+let ptyLoadError = null;
+
+function loadPtyModule() {
+  if (ptyModule) return ptyModule;
+  if (ptyLoadError) throw ptyLoadError;
+  try {
+    ptyModule = require('@homebridge/node-pty-prebuilt-multiarch');
+    return ptyModule;
+  } catch (err) {
+    ptyLoadError = err;
+    throw err;
+  }
+}
+
+function ptyAvailability() {
+  try {
+    loadPtyModule();
+    return { available: true };
+  } catch (err) {
+    return {
+      available: false,
+      reason: `Integrated terminal is unavailable on this ${process.platform}/${process.arch} build: ${err.message || err}`,
+    };
+  }
+}
 
 function pathExts() {
   if (process.platform !== 'win32') return [''];
@@ -228,6 +253,8 @@ function createPtyManager({ app }) {
 
   function spawnPty(ownerWebContents, input = {}) {
     if (!ownerWebContents || ownerWebContents.isDestroyed()) throw new Error('Terminal window is not available.');
+    const availability = ptyAvailability();
+    if (!availability.available) throw new Error(availability.reason);
     const ownerId = ownerWebContents.id;
     listeners.set(ownerId, ownerWebContents);
 
@@ -247,7 +274,7 @@ function createPtyManager({ app }) {
     const rows = Math.max(5, Math.min(200, Number(input.rows) || DEFAULT_ROWS));
     const id = crypto.randomUUID();
 
-    const proc = pty.spawn(shell.command, spawnSpec.args, {
+    const proc = loadPtyModule().spawn(shell.command, spawnSpec.args, {
       name: 'xterm-256color',
       cwd,
       env: spawnSpec.env,
@@ -336,6 +363,7 @@ function createPtyManager({ app }) {
   }
 
   return {
+    availability: ptyAvailability,
     detectShells,
     spawnPty,
     write,
@@ -352,4 +380,5 @@ module.exports = {
   createPtyManager,
   detectShells,
   shellByRequest,
+  ptyAvailability,
 };

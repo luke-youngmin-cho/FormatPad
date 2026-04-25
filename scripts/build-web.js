@@ -25,9 +25,8 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'docs');
 const PACKAGE = require('../package.json');
 const WEB_TARGETS = ['chrome90', 'firefox90', 'safari14', 'edge90'];
-// GitHub Pages currently serves this project at /FormatPad/. If the planned
-// formatpad.io root domain becomes primary, switch manifest start_url/scope
-// and file_handlers.action to "/" in src/web/manifest.webmanifest.
+// The web manifest uses relative start_url/scope/action values so the same
+// artifact works on GitHub Pages, localhost, and a future root custom domain.
 
 function emptyDir(dir) {
   if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); return; }

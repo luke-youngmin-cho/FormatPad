@@ -125,6 +125,10 @@ function registerTerminalHandlers({ ipcMain, app, authority }) {
     }));
   });
 
+  ipcMain.handle('terminal.pty.status', async () => {
+    return ptyManager.availability();
+  });
+
   ipcMain.handle('terminal.pty.restore', async () => {
     return ptyManager.readRestoreEntries();
   });

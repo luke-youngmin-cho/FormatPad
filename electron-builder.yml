@@ -42,6 +42,7 @@ win:
     - target: nsis
       arch:
         - x64
+        - arm64
 mac:
   target:
     - target: dmg

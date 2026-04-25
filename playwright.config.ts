@@ -14,5 +14,15 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: 'tests/e2e/web/*.spec.ts',
     },
+    {
+      name: 'web-firefox',
+      use: { ...devices['Desktop Firefox'] },
+      testMatch: 'tests/e2e/web/*.spec.ts',
+    },
+    {
+      name: 'web-webkit',
+      use: { ...devices['Desktop Safari'] },
+      testMatch: 'tests/e2e/web/*.spec.ts',
+    },
   ],
 });

@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld('terminal', {
 });
 
 contextBridge.exposeInMainWorld('pty', {
+  status: () => ipcRenderer.invoke('terminal.pty.status'),
   shells: () => ipcRenderer.invoke('terminal.pty.shells'),
   restore: () => ipcRenderer.invoke('terminal.pty.restore'),
   spawn: (request) => ipcRenderer.invoke('terminal.pty.spawn', request),

@@ -243,6 +243,38 @@ function findManifestFile(manifest, assetName, latestVersion) {
   return file;
 }
 
+function windowsAssetArchScore(name) {
+  const lower = String(name || '').toLowerCase();
+  if (!lower.endsWith('.exe') || lower.includes('blockmap')) return Number.POSITIVE_INFINITY;
+  const isArm64 = lower.includes('arm64') || lower.includes('aarch64');
+  const isX64 = lower.includes('x64') || lower.includes('amd64') || (!isArm64 && !lower.includes('ia32'));
+
+  if (process.arch === 'arm64') {
+    if (isArm64) return 0;
+    if (isX64) return 1; // Windows 11 ARM can run the x64 build if no native ARM64 asset exists.
+  }
+  if (process.arch === 'x64' && isX64 && !isArm64) return 0;
+  return Number.POSITIVE_INFINITY;
+}
+
+function macAssetArchScore(name) {
+  const lower = String(name || '').toLowerCase();
+  if (!lower.endsWith('.dmg')) return Number.POSITIVE_INFINITY;
+  if (lower.includes('universal')) return 0;
+  if (lower.includes(process.arch)) return 0;
+  if (!lower.includes('x64') && !lower.includes('arm64')) return 1;
+  return Number.POSITIVE_INFINITY;
+}
+
+function selectInstallerAsset(assets = []) {
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return null;
+  const score = process.platform === 'darwin' ? macAssetArchScore : windowsAssetArchScore;
+  return assets
+    .map(asset => ({ asset, score: score(asset?.name) }))
+    .filter(item => Number.isFinite(item.score))
+    .sort((a, b) => a.score - b.score || String(a.asset.name).localeCompare(String(b.asset.name)))[0]?.asset || null;
+}
+
 async function loadAndVerifyReleaseManifest(release, installerAsset, latestVersion) {
   const publicKey = getUpdaterPublicKey();
   if (!publicKey) throw new Error('Auto-install verification is not configured for this build.');
@@ -305,10 +337,7 @@ async function checkForUpdates(win, t) {
     if (compareVersions(currentVersion, latestVersion) <= 0) return;
     if (getSkippedVersion() === latestVersion) return;
 
-    const installerAsset = release.assets.find((a) => {
-      if (process.platform === 'darwin') return a.name.endsWith('.dmg');
-      return a.name.endsWith('.exe') && !a.name.includes('blockmap');
-    });
+    const installerAsset = selectInstallerAsset(release.assets || []);
     const manifestAssets = findManifestAssets(release);
     const verificationReady = !!installerAsset && manifestAssets.length > 0 && !!getUpdaterPublicKey();
 

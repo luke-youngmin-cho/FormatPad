@@ -2,8 +2,8 @@
   "name": "FormatPad",
   "short_name": "FormatPad",
   "description": "AI-native document & data workbench",
-  "start_url": "/FormatPad/",
-  "scope": "/FormatPad/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "theme_color": "#0f172a",
@@ -28,7 +28,7 @@
   ],
   "file_handlers": [
     {
-      "action": "/FormatPad/",
+      "action": "./",
       "accept": {
         "text/markdown": [
           ".md",

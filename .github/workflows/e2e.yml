@@ -6,7 +6,7 @@ on:
 
 jobs:
   test-web:
-    name: Web E2E (Chromium)
+    name: Web E2E (Chromium / Firefox / WebKit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,11 +22,11 @@ jobs:
       - name: Build web app
         run: npm run build:web:min
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
 
-      - name: Run web smoke test
-        run: npm run test:web
+      - name: Run web browser compatibility smoke tests
+        run: npm run test:web:compat
 
       - name: Upload Playwright report
         if: always()

@@ -21,6 +21,33 @@
   --syntax-added-bg: rgba(158,206,106,0.15); --syntax-deleted-bg: rgba(247,118,142,0.15);
 }
 
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  body.zen-mode #workspace { background: var(--bg-primary); }
+  .template-status-chip,
+  .terminal-block,
+  .terminal-block-drawer,
+  .ai-card,
+  .ai-message {
+    border-color: var(--border-color);
+    background: var(--bg-secondary);
+  }
+  .template-status-chip.warning { border-color: var(--syntax-meta); }
+  .git-badge-m { background: var(--active-bg); }
+  .git-badge-u { background: var(--active-bg); }
+  .cm-activeLine { background: var(--editor-active-line) !important; }
+  #tab-list .tab-item.pinned,
+  .sgrid-colletter.selected,
+  .sgrid-rownum.selected,
+  .sgrid-cell.in-selection,
+  .jedit-row:hover {
+    background: var(--active-bg) !important;
+  }
+  .data-table tbody tr:nth-child(even),
+  .sgrid-table tbody tr:nth-child(even) td {
+    background: var(--table-row-bg);
+  }
+}
+
 /* Reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {

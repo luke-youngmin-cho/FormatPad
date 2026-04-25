@@ -21,6 +21,8 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
   await page.goto(url);
   await page.waitForLoadState('networkidle');
 
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /width=device-width/);
+
   // Toolbar must be present
   await expect(page.locator('#toolbar')).toBeVisible({ timeout: 10000 });
 
@@ -42,6 +44,11 @@ test('web PWA assets are self-contained for offline install', async () => {
     test.skip(true, 'docs/ not built - run npm run build:web:min first');
     return;
   }
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(docsDir, 'manifest.webmanifest'), 'utf-8'));
+  expect(manifest.start_url).toBe('./');
+  expect(manifest.scope).toBe('./');
+  expect(manifest.file_handlers?.[0]?.action).toBe('./');
 
   const sw = fs.readFileSync(path.join(docsDir, 'sw.js'), 'utf-8');
   expect(sw).not.toContain('storage.googleapis.com');

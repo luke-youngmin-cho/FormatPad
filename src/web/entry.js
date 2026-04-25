@@ -49,13 +49,16 @@ function ensurePwaStyle() {
       gap: 12px;
       align-items: center;
       padding: 12px 14px;
+      border: 1px solid var(--border-color);
       border: 1px solid color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
       border-radius: 14px;
+      background: var(--bg-secondary);
       background: color-mix(in srgb, var(--bg-secondary) 94%, black);
       box-shadow: 0 16px 46px rgba(0, 0, 0, 0.35);
       color: var(--text-primary);
     }
     .fp-pwa-banner.offline {
+      border-color: var(--syntax-meta, #e0af68);
       border-color: color-mix(in srgb, var(--syntax-meta, #e0af68) 60%, var(--border-color));
     }
     .fp-pwa-banner strong {
@@ -146,6 +149,22 @@ function isStandalonePwa() {
   return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
+function manualInstallHint() {
+  const ua = navigator.userAgent || '';
+  const isChromium = /\b(?:Chrome|Chromium|CriOS|Edg|OPR|Arc)\b/i.test(ua);
+  const isFirefox = /\bFirefox\//i.test(ua);
+  const isSafari = /\bSafari\//i.test(ua) && !isChromium && !/\bFxiOS\b/i.test(ua);
+  if (isSafari) {
+    return navigator.maxTouchPoints > 0
+      ? 'Use Share, then Add to Home Screen. Safari does not show the automatic install prompt.'
+      : 'Use File, then Add to Dock. Safari does not show the automatic install prompt.';
+  }
+  if (isFirefox) {
+    return 'Firefox does not expose a standard install prompt here. Use Chrome, Edge, or Safari for app-style install.';
+  }
+  return '';
+}
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', () => {
@@ -183,10 +202,13 @@ function installOfflineBanner() {
 function installPwaPrompt(visitCount) {
   let installPromptEvent = null;
   let installBanner = null;
+  let manualBanner = null;
 
   const hideInstallBanner = () => {
     installBanner?.remove();
     installBanner = null;
+    manualBanner?.remove();
+    manualBanner = null;
   };
 
   const dismissInstallBanner = () => {
@@ -230,9 +252,27 @@ function installPwaPrompt(visitCount) {
     pwaRoot().appendChild(installBanner);
   };
 
+  const maybeShowManualInstallBanner = () => {
+    if (installPromptEvent || installBanner || manualBanner || visitCount < 2 || isStandalonePwa()) return;
+    if (Date.now() < readNumber(INSTALL_DISMISSED_UNTIL_KEY)) return;
+    const hint = manualInstallHint();
+    if (!hint) return;
+
+    const built = createBanner('install', 'Install FormatPad', hint);
+    manualBanner = built.banner;
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.textContent = 'Got it';
+    dismiss.addEventListener('click', dismissInstallBanner);
+    built.actions.append(dismiss);
+    pwaRoot().appendChild(manualBanner);
+  };
+
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     installPromptEvent = event;
+    manualBanner?.remove();
+    manualBanner = null;
     maybeShowInstallBanner();
   });
 
@@ -241,6 +281,10 @@ function installPwaPrompt(visitCount) {
     writeNumber(INSTALL_DISMISSED_UNTIL_KEY, Date.now() + 365 * 24 * 60 * 60 * 1000);
     hideInstallBanner();
   });
+
+  window.addEventListener('load', () => {
+    setTimeout(maybeShowManualInstallBanner, 1200);
+  }, { once: true });
 }
 
 function installLaunchQueueConsumer() {
