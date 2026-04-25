@@ -3509,12 +3509,16 @@ body.drag-over::after {
   cursor: col-resize;
   background: transparent;
   transition: background 0.15s;
+  position: relative;
+  z-index: 30;
 }
 .ai-sidebar-resize:hover,
 .ai-sidebar-resize.dragging { background: var(--accent-color); }
 .ai-sidebar-resize.hidden { display: none; }
 
 .ai-sidebar {
+  position: relative;
+  z-index: 30;
   width: 380px;
   min-width: 280px;
   max-width: min(720px, 70vw);
@@ -3549,6 +3553,16 @@ body.drag-over::after {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.ai-context-chip {
+  margin: 10px 10px 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 28%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 .ai-close,
 .ai-send,

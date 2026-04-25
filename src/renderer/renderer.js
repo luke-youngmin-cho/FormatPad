@@ -215,8 +215,6 @@ statusGitEl.className = 'status-git hidden';
 statusGitEl.type = 'button';
 statusZoomEl?.insertAdjacentElement('beforebegin', statusGitEl);
 const btnAiEl = document.getElementById('btn-ai');
-const btnMcpEl = document.getElementById('btn-mcp');
-const btnGitEl = document.getElementById('btn-git');
 const tabListEl = document.getElementById('tab-list');
 const sidebarEl = document.getElementById('sidebar');
 const fileTreeEl = document.getElementById('file-tree');
@@ -276,6 +274,22 @@ let vimEnabled = localStorage.getItem('editor.vim') === 'true';
 let minimapEnabled = localStorage.getItem('editor.minimap') === 'true';
 let zenChordArmed = false;
 let zenChordTimer = null;
+let aiContextRefreshTimer = null;
+
+function syncAiToolbarButton(visible = aiController?.isVisible?.() === true) {
+  if (!btnAiEl) return;
+  btnAiEl.classList.toggle('active', !!visible);
+  btnAiEl.setAttribute('aria-pressed', String(!!visible));
+  btnAiEl.title = visible ? 'Hide AI Sidebar (Ctrl+L)' : 'Show AI Sidebar (Ctrl+L)';
+}
+
+function scheduleAIContextRefresh(delay = 0) {
+  if (aiContextRefreshTimer) clearTimeout(aiContextRefreshTimer);
+  aiContextRefreshTimer = setTimeout(() => {
+    aiContextRefreshTimer = null;
+    aiController?.refreshActiveContext?.();
+  }, delay);
+}
 
 // Tab state
 const tabs = [];
@@ -1072,6 +1086,7 @@ function createEditorState(content, viewType = 'markdown') {
         }
         if (update.selectionSet && !editorMouseDown) updateStatusBar();
         if (update.docChanged || update.selectionSet) updateVimStatusBar();
+        if (update.docChanged || update.selectionSet) scheduleAIContextRefresh(80);
       }),
       Prec.highest(keymap.of(editorUxKeymap)),
       keymap.of([
@@ -1459,6 +1474,7 @@ function switchToTab(tabId) {
   // keep the previous markdown's TOC/backlinks pinned.
   buildTOC();
   if (sidebarActivePanel === 'backlinks') refreshBacklinks();
+  aiController?.refreshActiveContext?.({ force: true });
 
   // RB-1: opening one file grants that file only. Workspace authority comes
   // from the main process after Open Folder or trusted restore.
@@ -1509,6 +1525,7 @@ async function closeTab(tabId) {
     document.body.classList.remove('json-diff-mode');
     updateTitle();
     renderTabBar();
+    aiController?.refreshActiveContext?.({ force: true });
     return;
   }
 
@@ -3072,7 +3089,6 @@ function updateGitStatusBar() {
   if (!gitRepoState.isRepo || !gitRepoState.branch) {
     statusGitEl.classList.add('hidden');
     statusGitEl.textContent = '';
-    updateGitToolbarButton();
     return;
   }
   let label = `Git: ${gitRepoState.branch}`;
@@ -3085,7 +3101,6 @@ function updateGitStatusBar() {
   statusGitEl.textContent = label;
   statusGitEl.title = 'Open Git commands';
   statusGitEl.classList.remove('hidden');
-  updateGitToolbarButton();
 }
 
 function gitStatusCounts() {
@@ -3108,16 +3123,6 @@ function formatGitCounts(counts) {
   if (counts.untracked) parts.push(`${counts.untracked} untracked`);
   if (counts.other) parts.push(`${counts.other} other`);
   return parts.join(', ') || 'No working tree changes detected';
-}
-
-function updateGitToolbarButton() {
-  if (!btnGitEl) return;
-  const isRepo = !!gitRepoState.isRepo;
-  btnGitEl.classList.toggle('active', isRepo);
-  btnGitEl.setAttribute('aria-pressed', String(isRepo));
-  btnGitEl.title = isRepo
-    ? `Git: ${gitRepoState.branch || 'repository'} - ${formatGitCounts(gitStatusCounts())}`
-    : (workspacePath ? 'Git: no repository detected in workspace' : 'Git Status and Commands - open a folder first');
 }
 
 function showGitSlowBanner() {
@@ -4290,9 +4295,9 @@ function setupCommandRegistry() {
     { id: 'view.themePanel', title: 'Open Theme Panel', category: 'View', run: openThemePanel },
     { id: 'ai.openChat', title: 'Open AI Chat', category: 'AI', run: () => aiController?.openChat?.() },
     { id: 'ai.newChat', title: 'New AI Chat', category: 'AI', run: () => aiController?.newChat?.() },
-    { id: 'ai.openActions', title: 'Open AI Actions', category: 'AI', run: () => aiController?.openActions?.() },
+    { id: 'ai.openActions', title: 'Open AI Edit Tools', category: 'AI', run: () => aiController?.openActions?.() },
     { id: 'ai.switchProvider', title: 'Switch AI Provider', category: 'AI', run: () => aiController?.openSettings?.() },
-    { id: 'ai.runLastAction', title: 'Run Last AI Action', category: 'AI', run: () => aiController?.runLastAction?.() },
+    { id: 'ai.runLastAction', title: 'Run Suggested AI Edit', category: 'AI', run: () => aiController?.runLastAction?.() },
     { id: 'mcp.openServers', title: 'Open MCP Servers', category: 'MCP', run: () => aiController?.openMcp?.() },
     { id: 'terminal.newTerminal', title: 'New Terminal', category: 'Terminal', keybinding: 'Ctrl Shift `', run: () => terminalController?.newTerminal?.() },
     { id: 'terminal.commandRunner', title: 'Run Command in Command Runner', category: 'Terminal', run: () => terminalController?.openRunner?.() },
@@ -6284,11 +6289,11 @@ window.addEventListener('resize', () => {
       openModal: openFmtModal,
       closeModal: closeFmtModal,
       notify: notifyFormatError,
+      onVisibilityChange: syncAiToolbarButton,
     },
   });
-  btnAiEl?.addEventListener('click', () => aiController?.openChat?.());
-  btnMcpEl?.addEventListener('click', () => aiController?.openMcp?.());
-  btnGitEl?.addEventListener('click', openGitPanel);
+  btnAiEl?.addEventListener('click', () => aiController?.toggle?.());
+  syncAiToolbarButton();
 
   const commandRoot = document.getElementById('command-palette-root') || document.body;
   commandPalette = createCommandPalette({

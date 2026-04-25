@@ -26,22 +26,30 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
   // Toolbar must be present
   await expect(page.locator('#toolbar')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#btn-ai')).toBeVisible();
-  await expect(page.locator('#btn-mcp')).toBeVisible();
-  await expect(page.locator('#btn-git')).toBeVisible();
+  await expect(page.locator('#btn-mcp')).toHaveCount(0);
+  await expect(page.locator('#btn-git')).toHaveCount(0);
 
   await page.locator('#btn-ai').click();
   await expect(page.locator('.ai-sidebar')).toBeVisible();
+  await expect(page.locator('.ai-context-chip')).toContainText('No active document');
 
-  await page.locator('#btn-mcp').click();
+  await page.locator('#btn-ai').click();
+  await expect(page.locator('.ai-sidebar')).toBeHidden();
+
+  await page.locator('#btn-ai').click();
+  await expect(page.locator('.ai-sidebar')).toBeVisible();
+  await page.evaluate(() => (window as any).formatpadCommands.runCommand('file.new'));
+  await expect(page.locator('.ai-context-chip')).toContainText('Context: Untitled');
+
+  await page.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
   await expect(page.locator('.ai-mcp-panel')).toBeVisible();
   await expect(page.locator('.ai-mcp-panel')).toContainText('MCP is desktop-only');
 
-  await page.locator('#btn-git').click();
+  await page.evaluate(() => (window as any).formatpadCommands.runCommand('git.openPanel'));
   await expect(page.locator('#fmt-modal')).toContainText('Git Status and Commands');
   await page.locator('#fmt-modal-close').click();
 
   // Create a new file
-  await page.keyboard.press('Control+n');
   await expect(page.locator('.tab-item')).toBeVisible({ timeout: 5000 });
 
   // No unexpected console errors (ignore favicon 404s)

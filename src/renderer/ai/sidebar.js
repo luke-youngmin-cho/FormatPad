@@ -80,11 +80,10 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   root.innerHTML = `
     <div class="ai-header">
       <button type="button" class="ai-provider-button"></button>
-      <button type="button" class="ai-close" title="Close AI sidebar">x</button>
     </div>
     <div class="ai-mode-tabs">
       <button type="button" data-mode="chat" class="active">Chat</button>
-      <button type="button" data-mode="actions">Actions</button>
+      <button type="button" data-mode="actions">Edit</button>
       <button type="button" data-mode="mcp">MCP</button>
     </div>
     <div class="ai-main">
@@ -103,7 +102,6 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   `;
 
   const providerBtn = root.querySelector('.ai-provider-button');
-  const closeBtn = root.querySelector('.ai-close');
   const chatPanel = root.querySelector('.ai-chat-panel');
   const actionsPanel = root.querySelector('.ai-actions-panel');
   const mcpPanel = root.querySelector('.ai-mcp-panel');
@@ -113,6 +111,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   const renameChatBtn = root.querySelector('.ai-rename-chat');
 
   const logEl = el('div', 'ai-log');
+  const activeContextEl = el('div', 'ai-context-chip');
   const optionsEl = el('div', 'ai-context-options');
   const composerWrap = el('div', 'ai-composer-wrap');
   const composer = document.createElement('textarea');
@@ -123,7 +122,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   const sendBtn = el('button', 'ai-send', 'Send');
   sendBtn.type = 'button';
   composerWrap.append(composer, footer, sendBtn);
-  chatPanel.append(optionsEl, logEl, composerWrap);
+  chatPanel.append(activeContextEl, optionsEl, logEl, composerWrap);
 
   const includeTabsLabel = document.createElement('label');
   includeTabsLabel.innerHTML = '<input type="checkbox"> Include open tab list';
@@ -214,8 +213,8 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const active = hooks.getActiveTab?.();
     actionsPanel.innerHTML = '';
     const head = el('div', 'ai-actions-head');
-    head.appendChild(el('strong', '', active ? `${fileName(active.filePath || active.name)} actions` : 'Actions'));
-    head.appendChild(el('span', '', active ? `${active.viewType || 'plain'} / ${actionScopes(active).join(', ')}` : 'Open a tab first'));
+    head.appendChild(el('strong', '', active ? `AI edits for ${fileName(active.filePath || active.name)}` : 'AI edits'));
+    head.appendChild(el('span', '', active ? `${active.viewType || 'plain'} / ${actionScopes(active).join(', ')}` : 'Open a document to enable format-aware edits.'));
     actionsPanel.appendChild(head);
 
     if (actionRunning) {
@@ -232,7 +231,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
 
     if (!active) {
       const empty = el('div', 'ai-empty');
-      empty.innerHTML = '<strong>No active document.</strong><span>Open a CSV, JSON, Markdown, or Mermaid tab to see format actions.</span>';
+      empty.innerHTML = '<strong>No active document.</strong><span>Open a CSV, JSON, Markdown, or Mermaid tab to see AI edit tools.</span>';
       actionsPanel.appendChild(empty);
       return;
     }
@@ -240,7 +239,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const actions = getActionsFor(active.viewType, actionScopes(active));
     if (actions.length === 0) {
       const empty = el('div', 'ai-empty');
-      empty.innerHTML = `<strong>No actions for ${active.viewType || 'plain'} yet.</strong><span>P1-2 currently targets CSV/TSV, JSON, Markdown, and Mermaid.</span>`;
+      empty.innerHTML = `<strong>No AI edits for ${active.viewType || 'plain'} yet.</strong><span>Current edit tools target CSV/TSV, JSON, Markdown, and Mermaid.</span>`;
       actionsPanel.appendChild(empty);
       return;
     }
@@ -331,7 +330,11 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     logEl.innerHTML = '';
     if (messages.length === 0) {
       const empty = el('div', 'ai-empty');
-      empty.innerHTML = '<strong>AI sidebar is ready.</strong><span>Open a tab, add a provider key, and ask for a rewrite, explanation, or format transform.</span>';
+      const active = hooks.getActiveTab?.();
+      empty.appendChild(el('strong', '', active ? `AI is ready for ${fileName(active.filePath || active.name)}` : 'AI sidebar is ready.'));
+      empty.appendChild(el('span', '', active
+        ? 'Ask for a rewrite, explanation, or format transform using the current document as context.'
+        : 'Ask a general question, or open a document to attach file context.'));
       logEl.appendChild(empty);
       return;
     }
@@ -357,6 +360,39 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const cost = estimateCostUsd(provider, total);
     footer.textContent = `${promptTokens} prompt tokens / about ${total} with context / $${cost.toFixed(4)} est.${runnerEstimate ? ' runner attached' : ''}`;
     renderRunnerChip();
+  }
+
+  function getActiveContextSummary() {
+    const active = hooks.getActiveTab?.();
+    if (!active) {
+      return {
+        key: 'none',
+        label: 'No active document. Chat still works; open a file to attach document context.',
+      };
+    }
+    const contentLength = String(active.content || '').length;
+    const selectionLength = String(active.selection || '').length;
+    const name = fileName(active.filePath || active.name);
+    const bits = [active.viewType || 'plain', `${contentLength.toLocaleString()} chars`];
+    if (selectionLength) bits.push(`${selectionLength.toLocaleString()} selected`);
+    if (active.isModified) bits.push('unsaved');
+    return {
+      key: [active.id, active.filePath || active.name || '', active.viewType || '', contentLength, selectionLength, active.isModified ? 'dirty' : 'clean'].join('|'),
+      label: `Context: ${name} (${bits.join(', ')})`,
+    };
+  }
+
+  let lastActiveContextKey = '';
+  function refreshActiveContext({ force = false } = {}) {
+    const summary = getActiveContextSummary();
+    const changed = force || summary.key !== lastActiveContextKey;
+    if (changed) {
+      lastActiveContextKey = summary.key;
+      activeContextEl.textContent = summary.label;
+      if (messages.length === 0) renderMessages();
+      if (activeMode === 'actions') renderActions();
+    }
+    updateFooter();
   }
 
   async function loadHistory() {
@@ -946,7 +982,9 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   function toggle(force) {
     const visible = force === undefined ? root.classList.contains('hidden') : force;
     setSidebarVisible(root, resize, visible);
+    hooks.onVisibilityChange?.(visible);
     if (visible) {
+      refreshActiveContext({ force: true });
       composer.focus();
       updateFooter();
     }
@@ -956,6 +994,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     activeMode = mode;
     toggle(true);
     renderMode();
+    refreshActiveContext({ force: true });
     if (mode === 'chat') composer.focus();
   }
 
@@ -991,7 +1030,6 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   }
 
   providerBtn.addEventListener('click', openProviderSettings);
-  closeBtn.addEventListener('click', () => toggle(false));
   sendBtn.addEventListener('click', sendMessage);
   composer.addEventListener('input', () => {
     clearTimeout(composer._aiTimer);
@@ -1104,13 +1142,20 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   renderHeader();
   renderMode();
   renderMessages();
-  updateFooter();
+  refreshActiveContext({ force: true });
   keyStore.status().then(status => { keyStatus = status || keyStatus; }).catch(() => {});
   loadHistory();
-  setSidebarVisible(root, resize, localStorage.getItem(LS.visible) === 'true');
+  const initialVisible = localStorage.getItem(LS.visible) === 'true';
+  setSidebarVisible(root, resize, initialVisible);
+  hooks.onVisibilityChange?.(initialVisible);
+  if (initialVisible) refreshActiveContext({ force: true });
 
   return {
     toggle,
+    isVisible() {
+      return !root.classList.contains('hidden');
+    },
+    refreshActiveContext,
     openChat() {
       openMode('chat');
     },
