@@ -4018,6 +4018,11 @@ body.drag-over::after {
   gap: 12px;
   min-width: min(520px, 72vw);
 }
+.ai-prompt-description {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
 .ai-settings-row {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr);

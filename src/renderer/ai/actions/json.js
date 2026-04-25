@@ -215,12 +215,27 @@ registerAction({
   label: 'Validate + explain',
   icon: ICON,
   async run({ context, llm, ui }) {
-    const schemaText = await ui.promptText('Validate JSON', 'Paste draft-07 schema JSON', '{\n  "type": "object"\n}', { multiline: true });
-    if (!schemaText) return { message: 'Canceled' };
     const data = parseJson(context);
+    const inferred = { $schema: 'http://json-schema.org/draft-07/schema#', ...schemaFor(data) };
+    const schemaText = await ui.promptText(
+      'Validate current JSON',
+      `Schema for current file: ${context.activeTab?.name || 'current JSON'}`,
+      JSON.stringify(inferred, null, 2),
+      {
+        multiline: true,
+        description: 'FormatPad validates the currently open JSON document against this schema. Edit the schema if you want stricter rules, then press OK.',
+      },
+    );
+    if (!schemaText) return { message: 'Canceled' };
     const schema = JSON.parse(schemaText);
     const report = validationReport(validateSchema(data, schema));
-    const explanation = await llm.complete({ prompt: `Explain these JSON Schema validation results in plain English:\n\n${report}` });
+    const explanation = await llm.complete({
+      prompt: [
+        `Explain these JSON Schema validation results for the currently open file (${context.activeTab?.name || 'current JSON'}) in plain English:`,
+        '',
+        report,
+      ].join('\n'),
+    });
     ui.openTab({ name: 'JSON Validation Report.md', content: explanation.trim() + '\n', viewType: 'markdown' });
     return { message: 'Validation report opened' };
   },

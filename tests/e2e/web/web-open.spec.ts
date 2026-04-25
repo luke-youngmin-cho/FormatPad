@@ -48,7 +48,7 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
   const { url, close } = await startStaticServer(docsDir);
 
   await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /width=device-width/);
 
@@ -115,7 +115,7 @@ test('web file launch consumer and non-FSA save fallback work', async ({ page })
 
   const { url, close } = await startStaticServer(docsDir);
   await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const opened = await page.evaluate(async () => {
     return await (window as any).formatpad.openFileHandles([{
@@ -158,6 +158,9 @@ test('AI edit action cancel stops a hanging provider response', async ({ page })
     await page.locator('#btn-ai').click();
     await page.locator('.ai-mode-tabs button[data-mode="actions"]').click();
     await page.getByRole('button', { name: /Validate \+ explain/ }).click();
+    await expect(page.locator('#fmt-modal')).toContainText('Validate current JSON');
+    await expect(page.locator('#fmt-modal')).toContainText('Schema for current file: sample.json');
+    await expect(page.locator('#fmt-modal')).toContainText('FormatPad validates the currently open JSON document against this schema.');
     await page.locator('#fmt-modal-footer button.primary').click();
 
     await expect(page.locator('.ai-action-running')).toContainText('Validate + explain');

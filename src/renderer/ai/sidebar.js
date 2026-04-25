@@ -900,6 +900,10 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       input.value = defaultValue || '';
       input.placeholder = options.placeholder || '';
       if (options.multiline) input.rows = 8;
+      if (options.description) {
+        const description = el('p', 'ai-prompt-description', String(options.description));
+        body.appendChild(description);
+      }
       const row = el('label', 'ai-settings-row');
       row.append(el('span', '', label), input);
       body.appendChild(row);
