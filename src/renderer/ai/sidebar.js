@@ -23,6 +23,63 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function makeAbortError(message = 'AI request canceled.', name = 'AbortError') {
+  try {
+    return new DOMException(message, name);
+  } catch {
+    const err = new Error(message);
+    err.name = name;
+    return err;
+  }
+}
+
+function isAbortError(err) {
+  return err?.name === 'AbortError' || err?.name === 'TimeoutError';
+}
+
+function isCancelError(err) {
+  return err?.name === 'AbortError';
+}
+
+function throwIfSignalAborted(signal) {
+  if (!signal?.aborted) return;
+  throw signal.reason || makeAbortError();
+}
+
+function abortController(controller, reason) {
+  try {
+    controller.abort(reason);
+  } catch {
+    controller.abort();
+  }
+}
+
+function linkAbortSignals(signals) {
+  const controller = new AbortController();
+  const cleanups = [];
+  const abortFrom = (signal) => {
+    if (controller.signal.aborted) return;
+    abortController(controller, signal?.reason || makeAbortError());
+  };
+
+  for (const signal of signals.filter(Boolean)) {
+    if (signal.aborted) {
+      abortFrom(signal);
+      break;
+    }
+    const listener = () => abortFrom(signal);
+    signal.addEventListener('abort', listener, { once: true });
+    cleanups.push(() => signal.removeEventListener('abort', listener));
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup() {
+      for (const cleanup of cleanups) cleanup();
+    },
+  };
+}
+
 function fileName(path) {
   return String(path || 'Untitled').split(/[\\/]/).pop() || 'Untitled';
 }
@@ -71,6 +128,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   let sending = false;
   let historyQuery = '';
   let actionRunning = null;
+  let actionRunSeq = 0;
   let actionStatus = '';
   let runnerAttachment = null;
   let includeRunnerOutput = false;
@@ -222,7 +280,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       run.innerHTML = `<span class="ai-spinner"></span><span>${actionRunning.label}</span>`;
       const cancel = el('button', '', 'Cancel');
       cancel.type = 'button';
-      cancel.addEventListener('click', () => actionRunning?.controller.abort());
+      cancel.addEventListener('click', cancelRunningAction);
       run.appendChild(cancel);
       actionsPanel.appendChild(run);
     } else if (actionStatus) {
@@ -670,19 +728,38 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     }
   }
 
-  async function completeWithProvider({ prompt, messages: requestMessages, system, abortSignal }) {
+  async function completeWithProvider({ prompt, messages: requestMessages, system, abortSignal, timeoutMs = 120000 }) {
+    throwIfSignalAborted(abortSignal);
     const messagesForProvider = requestMessages || [
       { role: 'system', content: system || 'You are FormatPad AI. Return concise, directly usable output.' },
       { role: 'user', content: prompt },
     ];
+    const timeoutController = new AbortController();
+    const timeoutId = timeoutMs > 0
+      ? setTimeout(() => abortController(
+        timeoutController,
+        makeAbortError('AI request timed out. Try a smaller document or cancel and retry.', 'TimeoutError'),
+      ), timeoutMs)
+      : null;
+    const linked = linkAbortSignals([abortSignal, timeoutController.signal]);
     let text = '';
-    for await (const chunk of chatWithCurrentProvider({
-      requestMessages: messagesForProvider,
-      abortSignal,
-    })) {
-      if (chunk.type === 'text') text += chunk.delta;
+    try {
+      for await (const chunk of chatWithCurrentProvider({
+        requestMessages: messagesForProvider,
+        abortSignal: linked.signal,
+      })) {
+        throwIfSignalAborted(linked.signal);
+        if (chunk.type === 'text') text += chunk.delta;
+      }
+      throwIfSignalAborted(linked.signal);
+      return text;
+    } catch (err) {
+      if (linked.signal.aborted) throw linked.signal.reason || err || makeAbortError();
+      throw err;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      linked.cleanup();
     }
-    return text;
   }
 
   function templateSectionPrompt({ active, section, sectionText }) {
@@ -777,6 +854,12 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
 
   function promptText(title, label, defaultValue = '', options = {}) {
     return new Promise(resolve => {
+      const signal = options.abortSignal;
+      if (signal?.aborted) {
+        resolve('');
+        return;
+      }
+      let settled = false;
       const body = el('div', 'ai-settings');
       const input = options.multiline ? document.createElement('textarea') : document.createElement('input');
       if (!options.multiline) input.type = 'text';
@@ -786,20 +869,35 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       const row = el('label', 'ai-settings-row');
       row.append(el('span', '', label), input);
       body.appendChild(row);
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        hooks.closeModal?.();
+        resolve(value);
+      };
+      const onAbort = () => finish('');
+      signal?.addEventListener('abort', onAbort, { once: true });
       hooks.openModal?.({
         title,
         body,
         footer: [
-          { label: 'Cancel', onClick: () => { hooks.closeModal?.(); resolve(''); } },
-          { label: 'OK', primary: true, onClick: () => { const value = input.value; hooks.closeModal?.(); resolve(value); } },
+          { label: 'Cancel', onClick: () => finish('') },
+          { label: 'OK', primary: true, onClick: () => finish(input.value) },
         ],
       });
       setTimeout(() => { input.focus(); input.select?.(); }, 0);
     });
   }
 
-  function promptChoice(title, label, options, defaultValue) {
+  function promptChoice(title, label, options, defaultValue, promptOptions = {}) {
     return new Promise(resolve => {
+      const signal = promptOptions.abortSignal;
+      if (signal?.aborted) {
+        resolve('');
+        return;
+      }
+      let settled = false;
       const body = el('div', 'ai-settings');
       const select = document.createElement('select');
       for (const option of options) {
@@ -812,25 +910,51 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       const row = el('label', 'ai-settings-row');
       row.append(el('span', '', label), select);
       body.appendChild(row);
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        hooks.closeModal?.();
+        resolve(value);
+      };
+      const onAbort = () => finish('');
+      signal?.addEventListener('abort', onAbort, { once: true });
       hooks.openModal?.({
         title,
         body,
         footer: [
-          { label: 'Cancel', onClick: () => { hooks.closeModal?.(); resolve(''); } },
-          { label: 'OK', primary: true, onClick: () => { const value = select.value; hooks.closeModal?.(); resolve(value); } },
+          { label: 'Cancel', onClick: () => finish('') },
+          { label: 'OK', primary: true, onClick: () => finish(select.value) },
         ],
       });
       setTimeout(() => select.focus(), 0);
     });
   }
 
+  function cancelRunningAction() {
+    if (!actionRunning) return;
+    const running = actionRunning;
+    running.canceled = true;
+    abortController(running.controller, makeAbortError(`${running.label} canceled.`));
+    actionStatus = `${running.label} canceled.`;
+    actionRunning = null;
+    renderActions();
+  }
+
   async function runAIAction(action, detail = {}) {
     const active = hooks.getActiveTab?.();
     if (!active || actionRunning) return;
     const controller = new AbortController();
-    actionRunning = { id: action.id, label: action.label, controller };
+    const runId = ++actionRunSeq;
+    actionRunning = { id: action.id, label: action.label, controller, runId, canceled: false };
     actionStatus = '';
     renderActions();
+    const isCurrentRun = () => actionRunning?.runId === runId;
+    const ensureActionActive = () => {
+      if (!isCurrentRun() || controller.signal.aborted) {
+        throw controller.signal.reason || makeAbortError(`${action.label} canceled.`);
+      }
+    };
     const context = {
       activeTab: active,
       openTabs: hooks.getOpenTabs?.() || [],
@@ -838,20 +962,33 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       detail,
     };
     const ui = {
-      promptText,
-      promptChoice,
+      promptText: (title, label, defaultValue = '', options = {}) => {
+        ensureActionActive();
+        return promptText(title, label, defaultValue, { ...options, abortSignal: controller.signal });
+      },
+      promptChoice: (title, label, options, defaultValue) => {
+        ensureActionActive();
+        return promptChoice(title, label, options, defaultValue, { abortSignal: controller.signal });
+      },
       extractCode,
       extractJson,
-      openTab: ({ name, content, viewType }) => hooks.createTextTab?.(name, content, viewType),
-      applyDocument: ({ title, newText }) => openApplyDiff({
-        currentText: hooks.getActiveTab?.()?.content || '',
-        newText,
-        title,
-        openModal: hooks.openModal,
-        closeModal: hooks.closeModal,
-        apply: hooks.replaceDocument || hooks.replaceSelectionOrDocument,
-      }),
+      openTab: ({ name, content, viewType }) => {
+        ensureActionActive();
+        return hooks.createTextTab?.(name, content, viewType);
+      },
+      applyDocument: ({ title, newText }) => {
+        ensureActionActive();
+        return openApplyDiff({
+          currentText: hooks.getActiveTab?.()?.content || '',
+          newText,
+          title,
+          openModal: hooks.openModal,
+          closeModal: hooks.closeModal,
+          apply: hooks.replaceDocument || hooks.replaceSelectionOrDocument,
+        });
+      },
       applySelectionOrDocument: ({ title, newText }) => {
+        ensureActionActive();
         const latest = hooks.getActiveTab?.();
         return openApplyDiff({
           currentText: latest?.selection || latest?.content || '',
@@ -869,18 +1006,32 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       const result = await action.run({
         context,
         ui,
-        llm: { complete: (args) => completeWithProvider({ ...args, abortSignal: controller.signal }) },
+        llm: {
+          complete: async (args) => {
+            ensureActionActive();
+            const text = await completeWithProvider({ ...args, abortSignal: controller.signal });
+            ensureActionActive();
+            return text;
+          },
+        },
       });
+      ensureActionActive();
       actionStatus = result?.message || `${action.label} finished.`;
       track?.('ai_action', { format: active.viewType || 'unknown', action_name: action.id, provider: provider.id, success: 'true' });
     } catch (err) {
-      actionStatus = err?.name === 'AbortError' ? `${action.label} canceled.` : `${action.label}: ${err.message || String(err)}`;
-      hooks.notify?.('AI action', err);
-      track?.('ai_action', { format: active.viewType || 'unknown', action_name: action.id, provider: provider.id, success: 'false' });
-      track?.('error', { type: err.name || 'AIActionError', format: active.viewType || 'unknown' });
+      if (isCurrentRun()) {
+        actionStatus = isCancelError(err)
+          ? `${action.label} canceled.`
+          : `${action.label}: ${err.message || String(err)}`;
+        if (!isAbortError(err)) hooks.notify?.('AI action', err);
+        track?.('ai_action', { format: active.viewType || 'unknown', action_name: action.id, provider: provider.id, success: 'false' });
+        track?.('error', { type: err.name || 'AIActionError', format: active.viewType || 'unknown' });
+      }
     } finally {
-      actionRunning = null;
-      renderActions();
+      if (isCurrentRun()) {
+        actionRunning = null;
+        renderActions();
+      }
     }
   }
 

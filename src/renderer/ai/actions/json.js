@@ -1,4 +1,3 @@
-import Ajv from 'ajv';
 import { jsonrepair } from 'jsonrepair';
 import { registerAction } from './registry.js';
 
@@ -67,6 +66,107 @@ function toCsv(rows) {
   return [headers.join(','), ...rows.map(row => headers.map(h => esc(row[h])).join(','))].join('\n');
 }
 
+function jsonType(value) {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (Number.isInteger(value)) return 'integer';
+  return typeof value;
+}
+
+function typeMatches(value, type) {
+  if (type === 'array') return Array.isArray(value);
+  if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (type === 'integer') return Number.isInteger(value);
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+  if (type === 'null') return value === null;
+  return typeof value === type;
+}
+
+function schemaTypes(schema) {
+  const type = schema?.type;
+  if (Array.isArray(type)) return type;
+  if (type) return [type];
+  if (schema?.properties || schema?.required) return ['object'];
+  if (schema?.items) return ['array'];
+  return [];
+}
+
+function pathJoin(path, key) {
+  const escaped = String(key).replace(/~/g, '~0').replace(/\//g, '~1');
+  return `${path || ''}/${escaped}`;
+}
+
+function validateSchema(value, schema, path = '') {
+  if (!schema || typeof schema !== 'object') return [];
+  const errors = [];
+  const add = (message, at = path) => errors.push({ path: at || '/', message });
+
+  if (schema.const !== undefined && JSON.stringify(value) !== JSON.stringify(schema.const)) {
+    add(`must equal ${JSON.stringify(schema.const)}`);
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.some(item => JSON.stringify(item) === JSON.stringify(value))) {
+    add(`must be one of ${schema.enum.map(item => JSON.stringify(item)).join(', ')}`);
+  }
+
+  const types = schemaTypes(schema);
+  if (types.length && !types.some(type => typeMatches(value, type))) {
+    add(`must be ${types.join(' or ')}; got ${jsonType(value)}`);
+    return errors;
+  }
+
+  if (typeMatches(value, 'object')) {
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    for (const key of required) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) add(`missing required property "${key}"`, pathJoin(path, key));
+    }
+    const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+    for (const [key, childSchema] of Object.entries(properties)) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        errors.push(...validateSchema(value[key], childSchema, pathJoin(path, key)));
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!Object.prototype.hasOwnProperty.call(properties, key)) add(`additional property "${key}" is not allowed`, pathJoin(path, key));
+      }
+    }
+  }
+
+  if (Array.isArray(value)) {
+    if (Number.isFinite(schema.minItems) && value.length < schema.minItems) add(`must contain at least ${schema.minItems} items`);
+    if (Number.isFinite(schema.maxItems) && value.length > schema.maxItems) add(`must contain at most ${schema.maxItems} items`);
+    if (schema.items && typeof schema.items === 'object') {
+      value.forEach((item, index) => errors.push(...validateSchema(item, schema.items, pathJoin(path, index))));
+    }
+  }
+
+  if (typeof value === 'string') {
+    if (Number.isFinite(schema.minLength) && value.length < schema.minLength) add(`must be at least ${schema.minLength} characters`);
+    if (Number.isFinite(schema.maxLength) && value.length > schema.maxLength) add(`must be at most ${schema.maxLength} characters`);
+    if (schema.pattern) {
+      try {
+        if (!new RegExp(schema.pattern).test(value)) add(`must match pattern ${schema.pattern}`);
+      } catch {
+        add(`schema pattern is invalid: ${schema.pattern}`);
+      }
+    }
+  }
+
+  if (typeof value === 'number') {
+    if (Number.isFinite(schema.minimum) && value < schema.minimum) add(`must be >= ${schema.minimum}`);
+    if (Number.isFinite(schema.maximum) && value > schema.maximum) add(`must be <= ${schema.maximum}`);
+    if (Number.isFinite(schema.exclusiveMinimum) && value <= schema.exclusiveMinimum) add(`must be > ${schema.exclusiveMinimum}`);
+    if (Number.isFinite(schema.exclusiveMaximum) && value >= schema.exclusiveMaximum) add(`must be < ${schema.exclusiveMaximum}`);
+  }
+
+  return errors;
+}
+
+function validationReport(errors) {
+  if (!errors.length) return 'JSON is valid against the schema.';
+  return errors.map((err, index) => `${index + 1}. ${err.path}: ${err.message}`).join('\n');
+}
+
 registerAction({
   id: 'json.generate-schema',
   format: 'json',
@@ -119,9 +219,7 @@ registerAction({
     if (!schemaText) return { message: 'Canceled' };
     const data = parseJson(context);
     const schema = JSON.parse(schemaText);
-    const ajv = new Ajv({ allErrors: true, strict: false });
-    const valid = ajv.validate(schema, data);
-    const report = valid ? 'JSON is valid against the schema.' : JSON.stringify(ajv.errors || [], null, 2);
+    const report = validationReport(validateSchema(data, schema));
     const explanation = await llm.complete({ prompt: `Explain these JSON Schema validation results in plain English:\n\n${report}` });
     ui.openTab({ name: 'JSON Validation Report.md', content: explanation.trim() + '\n', viewType: 'markdown' });
     return { message: 'Validation report opened' };
