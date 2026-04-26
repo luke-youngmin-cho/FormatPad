@@ -491,7 +491,7 @@ export function createTerminalPanel({ hooks, track }) {
     newTerminal() {
       toggle(true);
       setMode('terminal');
-      ensurePtyGroup().newTerminal();
+      ensurePtyGroup().openNewTerminalPanel?.();
     },
     prefill(command) {
       window.dispatchEvent(new CustomEvent('formatpad-terminal-prefill', { detail: { command } }));

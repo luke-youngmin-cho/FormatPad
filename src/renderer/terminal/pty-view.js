@@ -7,6 +7,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import xtermCss from '@xterm/xterm/css/xterm.css';
 
 const MAX_BLOCK_CHARS = 240_000;
+const LAST_SHELL_KEY = 'fp-terminal-last-shell';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -46,6 +47,23 @@ function isInsidePath(child, parent) {
 
 function fileName(value) {
   return String(value || '').split(/[\\/]/).pop() || value || '';
+}
+
+function shellIcon(shell = {}) {
+  const id = String(shell.id || shell.family || '').toLowerCase();
+  if (id.includes('powershell')) return 'PS';
+  if (id.includes('cmd')) return 'CMD';
+  if (id.includes('git')) return 'Git';
+  if (id.includes('wsl')) return 'WSL';
+  if (id.includes('zsh')) return 'zsh';
+  if (id.includes('fish')) return 'fish';
+  return 'sh';
+}
+
+function shellDescription(shell = {}) {
+  const command = shell.command || '';
+  const family = shell.family ? `${shell.family} shell` : 'terminal shell';
+  return command ? `${family} - ${command}` : family;
 }
 
 function nowId(prefix = 'pty') {
@@ -272,11 +290,23 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     <div class="terminal-pty-topbar">
       <div class="terminal-tab-strip"></div>
       <div class="terminal-pty-toolbar">
-        <select class="terminal-shell-select"></select>
-        <button type="button" class="terminal-new">New Terminal</button>
-        <button type="button" class="terminal-kill">Kill</button>
+        <span class="terminal-active-context"></span>
         <span class="terminal-pty-status"></span>
       </div>
+    </div>
+    <div class="terminal-new-panel hidden">
+      <div class="terminal-new-panel-head">
+        <div>
+          <strong>New terminal</strong>
+          <span>Choose a shell profile. Closing happens from each terminal tab.</span>
+        </div>
+        <button type="button" class="terminal-new-cancel" aria-label="Close new terminal picker">x</button>
+      </div>
+      <label class="terminal-new-cwd">
+        <span>CWD</span>
+        <input type="text" spellcheck="false">
+      </label>
+      <div class="terminal-shell-list"></div>
     </div>
     <div class="terminal-draft hidden">
       <div>
@@ -293,8 +323,8 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     <div class="terminal-pty-stage">
       <div class="terminal-pty-empty">
         <strong>No terminal running</strong>
-        <span>Start an integrated shell in the approved workspace.</span>
-        <button type="button" class="terminal-empty-new">New Terminal</button>
+        <span>Click + or choose a shell profile to start in the approved workspace.</span>
+        <button type="button" class="terminal-empty-new">Select shell</button>
       </div>
     </div>
     <details class="terminal-block-drawer">
@@ -308,10 +338,12 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   mount.appendChild(root);
 
   const tabStrip = root.querySelector('.terminal-tab-strip');
-  const shellSelect = root.querySelector('.terminal-shell-select');
-  const newBtn = root.querySelector('.terminal-new');
-  const killBtn = root.querySelector('.terminal-kill');
+  const activeContextEl = root.querySelector('.terminal-active-context');
   const statusEl = root.querySelector('.terminal-pty-status');
+  const newPanel = root.querySelector('.terminal-new-panel');
+  const shellList = root.querySelector('.terminal-shell-list');
+  const newCwdInput = root.querySelector('.terminal-new-cwd input');
+  const newPanelCancel = root.querySelector('.terminal-new-cancel');
   const stage = root.querySelector('.terminal-pty-stage');
   const emptyState = root.querySelector('.terminal-pty-empty');
   const emptyNewBtn = root.querySelector('.terminal-empty-new');
@@ -330,6 +362,8 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   let removePtyListener = null;
   let restored = false;
   let draftText = '';
+  let newPanelOpen = false;
+  let pendingNewCwd = '';
   let ptyStatus = available ? { available: true } : { available: false, reason: 'Full terminal is available only in the Electron desktop app.' };
 
   function defaultCwd() {
@@ -341,9 +375,9 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   }
 
   function setControlsEnabled(enabled) {
-    shellSelect.disabled = !enabled;
-    newBtn.disabled = !enabled;
-    killBtn.disabled = !enabled || !activeId;
+    root.querySelectorAll('.terminal-shell-card, .terminal-empty-new').forEach(button => {
+      button.disabled = !enabled;
+    });
   }
 
   function activeSession() {
@@ -352,6 +386,17 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
 
   function updateEmptyState() {
     emptyState?.classList.toggle('hidden', sessions.length > 0);
+  }
+
+  function updateActiveContext() {
+    const session = activeSession();
+    if (!activeContextEl) return;
+    if (!session) {
+      activeContextEl.textContent = 'No terminal';
+      return;
+    }
+    const cwd = fileName(session.cwd) || session.cwd || 'workspace';
+    activeContextEl.textContent = `${session.shell?.label || 'Shell'} - ${cwd}`;
   }
 
   function updateBlockCount() {
@@ -423,17 +468,79 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     }
     const add = el('button', 'terminal-tab terminal-tab-add', '+');
     add.type = 'button';
-    add.title = 'New terminal (Ctrl+Shift+`)';
-    add.disabled = !available || ptyStatus.available === false;
-    add.addEventListener('click', () => newTerminal());
+    add.title = 'Select shell profile (Ctrl+Shift+`)';
+    add.disabled = !available;
+    add.addEventListener('click', () => openNewTerminalPanel());
     tabStrip.appendChild(add);
     setControlsEnabled(available && ptyStatus.available !== false);
     updateEmptyState();
     updateBlockCount();
+    updateActiveContext();
+  }
+
+  function renderNewTerminalPanel() {
+    newPanel.classList.toggle('hidden', !newPanelOpen);
+    if (!newPanelOpen) return;
+
+    if (!pendingNewCwd) pendingNewCwd = defaultCwd();
+    newCwdInput.value = pendingNewCwd;
+    shellList.innerHTML = '';
+
+    if (!available || ptyStatus.available === false) {
+      const message = el('div', 'terminal-shell-empty');
+      message.textContent = ptyStatus.reason || 'Integrated terminal is unavailable in this environment.';
+      shellList.appendChild(message);
+      return;
+    }
+
+    if (!shells.length) {
+      const message = el('div', 'terminal-shell-empty');
+      message.textContent = 'No shell profiles were detected on this system.';
+      shellList.appendChild(message);
+      return;
+    }
+
+    const preferred = localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id || '';
+    for (const shell of shells) {
+      const card = el('button', `terminal-shell-card ${shell.id === preferred ? 'preferred' : ''}`);
+      card.type = 'button';
+      card.title = shell.command || shell.label || 'Shell';
+      card.appendChild(el('span', 'terminal-shell-icon', shellIcon(shell)));
+      const copy = el('span', 'terminal-shell-copy');
+      copy.appendChild(el('strong', '', shell.label || shell.id || 'Shell'));
+      copy.appendChild(el('small', '', shellDescription(shell)));
+      card.appendChild(copy);
+      if (shell.id === preferred) card.appendChild(el('span', 'terminal-shell-badge', 'Default'));
+      card.addEventListener('click', () => {
+        localStorage.setItem(LAST_SHELL_KEY, shell.id);
+        newTerminal({ shell: shell.id, cwd: newCwdInput.value.trim() || defaultCwd() });
+      });
+      shellList.appendChild(card);
+    }
+  }
+
+  async function openNewTerminalPanel() {
+    newPanelOpen = true;
+    pendingNewCwd = defaultCwd();
+    renderNewTerminalPanel();
+    if (!available) {
+      setStatus('desktop only');
+      return;
+    }
+    await ensureShells();
+    renderNewTerminalPanel();
+    setTimeout(() => newCwdInput?.focus(), 0);
+  }
+
+  function closeNewTerminalPanel() {
+    newPanelOpen = false;
+    renderNewTerminalPanel();
+    activeSession()?.term.focus();
   }
 
   function activateSession(id) {
     activeId = id;
+    closeNewTerminalPanel();
     for (const session of sessions) {
       session.container.classList.toggle('hidden', session.id !== id);
     }
@@ -494,15 +601,12 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
 
   async function ensureShells() {
     if (shells.length) return shells;
-    if (!await ensurePtyAvailable()) return [];
-    shells = await window.pty.shells();
-    shellSelect.innerHTML = '';
-    for (const shell of shells) {
-      const option = document.createElement('option');
-      option.value = shell.id;
-      option.textContent = shell.label;
-      shellSelect.appendChild(option);
-    }
+    if (!available) return [];
+    shells = await window.pty.shells().catch(err => {
+      setStatus(err.message || String(err));
+      return [];
+    });
+    renderNewTerminalPanel();
     return shells;
   }
 
@@ -582,13 +686,21 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       await ensureShells();
       const workspaceRoot = hooks.getWorkspacePath?.() || '';
       const cwd = options.cwd || defaultCwd();
-      const selectedShell = options.shell || shellSelect.value || shells[0]?.id || '';
+      let allowOutsideWorkspace = options.allowOutsideWorkspace === true;
+      if (!allowOutsideWorkspace && (!workspaceRoot || !isInsidePath(cwd, workspaceRoot))) {
+        allowOutsideWorkspace = await askOutsideWorkspace(cwd, workspaceRoot);
+        if (!allowOutsideWorkspace) {
+          setStatus('Terminal start canceled.');
+          return null;
+        }
+      }
+      const selectedShell = options.shell || localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id || '';
       setStatus('Starting shell...');
       const info = await window.pty.spawn({
         shell: selectedShell,
         cwd,
         workspaceRoot,
-        allowOutsideWorkspace: false,
+        allowOutsideWorkspace,
         cols: 100,
         rows: 28,
         restore: options.restore !== false,
@@ -636,6 +748,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       session.term.writeln(`[process exited with code ${payload.exitCode ?? 'unknown'}]`);
       session.title = `${session.title || 'Terminal'} (exited)`;
       renderTabs();
+      setStatus('Process exited. Close the tab or open a new shell with +.');
     }
   }
 
@@ -676,19 +789,36 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   }
 
   async function activate() {
-    if (!await ensurePtyAvailable()) {
+    if (!available) {
+      setStatus(ptyStatus.reason);
+      setControlsEnabled(false);
       return;
     }
     await ensureShells();
-    await restoreSaved();
-    if (!sessions.length) await newTerminal({ restore: true });
+    if (!sessions.length) {
+      setStatus(shells.length ? 'Choose + to start a shell.' : 'No shell profiles detected.');
+      renderTabs();
+      return;
+    }
     activeSession()?.term.focus();
   }
 
-  newBtn.addEventListener('click', () => newTerminal());
-  emptyNewBtn?.addEventListener('click', () => newTerminal());
-  killBtn.addEventListener('click', () => {
-    if (activeId) closeSession(activeId);
+  emptyNewBtn?.addEventListener('click', () => openNewTerminalPanel());
+  newPanelCancel?.addEventListener('click', closeNewTerminalPanel);
+  newCwdInput?.addEventListener('input', () => {
+    pendingNewCwd = newCwdInput.value;
+  });
+  newCwdInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeNewTerminalPanel();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const preferred = localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id;
+      if (preferred) newTerminal({ shell: preferred, cwd: newCwdInput.value.trim() || defaultCwd() });
+    }
   });
   draftPaste.addEventListener('click', pasteDraft);
   draftCopy.addEventListener('click', async () => {
@@ -711,6 +841,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     prefill(command) {
       showDraft(command);
     },
+    openNewTerminalPanel,
     focus() {
       activeSession()?.term.focus();
     },

@@ -3189,12 +3189,29 @@ body.drag-over::after {
 .terminal-pty-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 0 0 auto;
-  min-width: max-content;
+  min-width: 0;
   padding: 0;
 }
-.terminal-pty-toolbar select,
+.terminal-active-context,
+.terminal-pty-status {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.terminal-active-context {
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 62%, transparent);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+}
+.terminal-pty-status {
+  color: var(--text-tertiary);
+}
 .terminal-draft button {
   border: 1px solid var(--border-color);
   border-radius: 7px;
@@ -3202,28 +3219,139 @@ body.drag-over::after {
   color: var(--text-primary);
   font-family: inherit;
 }
-.terminal-pty-toolbar select {
-  max-width: 210px;
-  padding: 5px 8px;
-  font-size: 11px;
-}
-.terminal-pty-toolbar button {
-  padding: 5px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.terminal-pty-toolbar button:hover,
 .terminal-draft button:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
 }
-.terminal-pty-status {
+.terminal-new-panel {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-color) 9%, transparent), transparent 44%),
+    color-mix(in srgb, var(--bg-secondary) 94%, var(--bg-primary));
+}
+.terminal-new-panel.hidden { display: none; }
+.terminal-new-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.terminal-new-panel-head > div {
+  display: grid;
+  gap: 2px;
+}
+.terminal-new-panel-head strong {
+  font-size: 12px;
+}
+.terminal-new-panel-head span,
+.terminal-new-cwd {
   color: var(--text-tertiary);
   font-size: 11px;
+}
+.terminal-new-cancel {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.terminal-new-cancel:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+.terminal-new-cwd {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.terminal-new-cwd input {
+  min-width: 0;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  outline: none;
+}
+.terminal-shell-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.terminal-shell-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-primary) 74%, transparent);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.terminal-shell-card:hover,
+.terminal-shell-card.preferred {
+  border-color: color-mix(in srgb, var(--accent-color) 48%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-primary));
+  color: var(--text-primary);
+}
+.terminal-shell-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.terminal-shell-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-color) 13%, transparent);
+  color: var(--accent-color);
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.terminal-shell-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.terminal-shell-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.terminal-shell-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+.terminal-shell-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-color) 13%, transparent);
+  color: var(--accent-color);
+  font-size: 10px;
+}
+.terminal-shell-empty {
+  padding: 9px;
+  border: 1px dashed color-mix(in srgb, var(--border-color) 72%, transparent);
+  border-radius: 9px;
+  color: var(--text-tertiary);
+  font-size: 11px;
 }
 .terminal-draft {
   display: grid;
