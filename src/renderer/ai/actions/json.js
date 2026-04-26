@@ -173,6 +173,8 @@ registerAction({
   scope: 'document',
   label: 'Generate JSON Schema',
   icon: ICON,
+  requiresAI: false,
+  description: 'Infer a draft JSON Schema locally from the current document.',
   async run({ context, ui }) {
     const schema = { $schema: 'http://json-schema.org/draft-07/schema#', ...schemaFor(parseJson(context)) };
     ui.openTab({ name: 'schema.json', content: JSON.stringify(schema, null, 2), viewType: 'json' });
@@ -186,6 +188,8 @@ registerAction({
   scope: 'document',
   label: 'Generate sample data',
   icon: ICON,
+  requiresAI: false,
+  description: 'Generate local sample data from the current JSON Schema.',
   async run({ context, ui }) {
     const count = Math.max(1, Math.min(20, Number(await ui.promptText('Generate samples', 'Number of samples', '3')) || 3));
     const schema = parseJson(context);
@@ -201,6 +205,8 @@ registerAction({
   scope: ['document', 'node'],
   label: 'Flatten to CSV',
   icon: ICON,
+  requiresAI: false,
+  description: 'Flatten JSON into CSV locally without using an AI provider.',
   async run({ context, ui }) {
     const rows = flattenRows(parseJson(context)).filter(Boolean);
     ui.openTab({ name: 'flattened.csv', content: toCsv(rows) + '\n', viewType: 'csv' });
@@ -214,6 +220,8 @@ registerAction({
   scope: 'document',
   label: 'Validate + explain',
   icon: ICON,
+  requiresAI: true,
+  description: 'Validate locally, then use the AI provider to explain the result.',
   async run({ context, llm, ui }) {
     const data = parseJson(context);
     const inferred = { $schema: 'http://json-schema.org/draft-07/schema#', ...schemaFor(data) };
@@ -247,6 +255,8 @@ registerAction({
   scope: 'document',
   label: 'Repair + explain',
   icon: ICON,
+  requiresAI: true,
+  description: 'Repair JSON locally, then use the AI provider to explain the changes.',
   async run({ context, llm, ui }) {
     const source = context.activeTab?.content || '';
     const repaired = jsonrepair(source);

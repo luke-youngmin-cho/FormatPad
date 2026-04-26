@@ -59,6 +59,8 @@ registerAction({
   scope: 'column',
   label: 'Detect type + outliers',
   icon: ICON,
+  requiresAI: false,
+  description: 'Infer one column locally and propose clearing inconsistent values.',
   async run({ context, ui }) {
     const table = parseTable(context);
     const defaultColumn = Number.isInteger(context.detail?.column)
@@ -81,6 +83,8 @@ registerAction({
   scope: 'document',
   label: 'Natural-language filter',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to convert a plain-language request into filter rules.',
   async run({ context, llm, ui }) {
     const table = parseTable(context);
     const request = await ui.promptText('Natural-language filter', 'Filter request', "age > 30 and city == 'Seoul'");
@@ -110,6 +114,8 @@ registerAction({
   scope: ['selection', 'document'],
   label: 'Generate SQL SELECT',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to draft a SQL query from the table headers and sample rows.',
   async run({ context, llm, ui }) {
     const table = parseTable(context);
     const text = await llm.complete({ prompt: `Generate a useful SQL SELECT query for a table named data with columns: ${table.headers.join(', ')}. Consider this sample:\n${unparse(table.headers, table.data.slice(0, 12), table.delim)}` });
@@ -124,6 +130,8 @@ registerAction({
   scope: 'document',
   label: 'Summary stats report',
   icon: ICON,
+  requiresAI: false,
+  description: 'Compute a local summary report from the current CSV/TSV data.',
   async run({ context, ui }) {
     const table = parseTable(context);
     ui.openTab({ name: 'CSV Summary.md', content: `# CSV Summary\n\nRows: ${table.data.length}\nColumns: ${table.headers.length}\n\n${stats(table.headers, table.data)}\n`, viewType: 'markdown' });
@@ -137,6 +145,8 @@ registerAction({
   scope: 'column',
   label: 'Type consistency check',
   icon: ICON,
+  requiresAI: false,
+  description: 'Check inferred column types locally without sending data to an AI provider.',
   async run({ context, ui }) {
     const table = parseTable(context);
     const lines = table.headers.map((h, c) => {

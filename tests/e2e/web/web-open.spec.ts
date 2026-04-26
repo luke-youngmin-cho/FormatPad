@@ -204,6 +204,40 @@ test('AI edit diff modal close button cancels the running action', async ({ page
   }
 });
 
+test('Assist tools distinguish local actions from AI-powered actions', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(async () => {
+      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad","beta":2}'], 'sample.json', { type: 'application/json' }));
+    });
+
+    await page.locator('#btn-ai').click();
+    await expect(page.locator('.ai-mode-tabs button[data-mode="actions"]')).toHaveText('Assist');
+    await page.locator('.ai-mode-tabs button[data-mode="actions"]').click();
+    await expect(page.locator('.ai-actions-panel')).toContainText('AI-powered edits');
+    await expect(page.locator('.ai-actions-panel')).toContainText('Local format tools');
+
+    const localAction = page.getByRole('button', { name: /Generate JSON Schema/ });
+    await expect(localAction).toContainText('Runs locally');
+    await expect(localAction).not.toBeDisabled();
+
+    const aiAction = page.getByRole('button', { name: /Validate \+ explain/ });
+    await expect(aiAction).toContainText('Uses AI provider');
+    await expect(aiAction).toContainText('Requires provider key');
+    await expect(aiAction).toBeDisabled();
+  } finally {
+    await close();
+  }
+});
+
 test('web PWA assets are self-contained for offline install', async () => {
   if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
     test.skip(true, 'docs/ not built - run npm run build:web:min first');

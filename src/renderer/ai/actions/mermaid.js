@@ -19,6 +19,8 @@ registerAction({
   scope: ['document', 'node'],
   label: 'Decompose node into 3 substeps',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to rewrite a selected Mermaid node into substeps.',
   async run({ context, llm, ui }) {
     const node = await ui.promptText('Decompose node', 'Node id or label to expand', '');
     if (!node) return { message: 'Canceled' };
@@ -35,6 +37,8 @@ registerAction({
   scope: 'document',
   label: 'Add error-path edges',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to add plausible error, timeout, or retry paths.',
   async run({ context, llm, ui }) {
     return rewriteDiagram({
       context, llm, ui, title: 'Add Mermaid error paths',
@@ -49,6 +53,8 @@ registerAction({
   scope: 'document',
   label: 'Describe diagram in prose',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to summarize the diagram in prose.',
   async run({ context, llm, ui }) {
     const text = await llm.complete({
       prompt: `Describe this Mermaid diagram in concise prose with sections for purpose, main flow, edge cases, and assumptions.\n\n${context.activeTab?.content || ''}`,
@@ -64,6 +70,8 @@ registerAction({
   scope: 'document',
   label: 'Convert flowchart to sequence',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to convert a Mermaid flowchart into a sequence diagram.',
   async run({ context, llm, ui }) {
     return rewriteDiagram({
       context, llm, ui, title: 'Convert flowchart to sequence diagram',

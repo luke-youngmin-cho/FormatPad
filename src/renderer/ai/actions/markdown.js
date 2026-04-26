@@ -37,6 +37,8 @@ registerAction({
   scope: 'selection',
   label: 'Expand as PRD section',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to expand selected notes into a PRD-style section.',
   async run({ context, llm, ui }) {
     return llmRewrite({
       context, llm, ui, title: 'Expand PRD section',
@@ -51,6 +53,8 @@ registerAction({
   scope: 'selection',
   label: 'Translate selection',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to translate the selected Markdown.',
   async run({ context, llm, ui }) {
     const target = await ui.promptChoice('Translate', 'Target language', ['Korean', 'English', 'Japanese', 'Spanish', 'French'], 'Korean');
     if (!target) return { message: 'Canceled' };
@@ -67,6 +71,8 @@ registerAction({
   scope: 'document',
   label: 'Generate / refresh TOC',
   icon: ICON,
+  requiresAI: false,
+  description: 'Generate a Markdown table of contents locally from headings.',
   async run({ context, ui }) {
     const doc = context.activeTab?.content || '';
     const toc = buildToc(doc);
@@ -83,6 +89,8 @@ registerAction({
   scope: 'selection',
   label: 'Tone shift',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to rewrite the selected Markdown tone.',
   async run({ context, llm, ui }) {
     const tone = await ui.promptChoice('Tone shift', 'Tone', ['formal', 'friendly', 'technical'], 'friendly');
     if (!tone) return { message: 'Canceled' };
@@ -99,6 +107,8 @@ registerAction({
   scope: 'document',
   label: 'Extract checklist tab',
   icon: ICON,
+  requiresAI: true,
+  description: 'Uses the AI provider to turn the document into a concise task checklist.',
   async run({ context, llm, ui }) {
     const text = await llm.complete({
       prompt: `Extract a concise task checklist from this Markdown. Return only Markdown task items.\n\n${context.activeTab?.content || ''}`,

@@ -142,7 +142,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     </div>
     <div class="ai-mode-tabs">
       <button type="button" data-mode="chat" class="active">Chat</button>
-      <button type="button" data-mode="actions">Edit</button>
+      <button type="button" data-mode="actions">Assist</button>
       <button type="button" data-mode="mcp">MCP</button>
     </div>
     <div class="ai-main">
@@ -272,8 +272,10 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const active = hooks.getActiveTab?.();
     actionsPanel.innerHTML = '';
     const head = el('div', 'ai-actions-head');
-    head.appendChild(el('strong', '', active ? `AI edits for ${fileName(active.filePath || active.name)}` : 'AI edits'));
-    head.appendChild(el('span', '', active ? `${active.viewType || 'plain'} / ${actionScopes(active).join(', ')}` : 'Open a document to enable format-aware edits.'));
+    head.appendChild(el('strong', '', active ? `Assist tools for ${fileName(active.filePath || active.name)}` : 'Assist tools'));
+    head.appendChild(el('span', '', active
+      ? `${active.viewType || 'plain'} / ${actionScopes(active).join(', ')}. Local tools stay on-device; AI-powered tools use ${providerStatusText()}.`
+      : 'Open a document to enable format-aware local and AI-powered tools.'));
     actionsPanel.appendChild(head);
 
     if (actionRunning) {
@@ -290,7 +292,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
 
     if (!active) {
       const empty = el('div', 'ai-empty');
-      empty.innerHTML = '<strong>No active document.</strong><span>Open a CSV, JSON, Markdown, or Mermaid tab to see AI edit tools.</span>';
+      empty.innerHTML = '<strong>No active document.</strong><span>Open a CSV, JSON, Markdown, or Mermaid tab to see local and AI-powered assist tools.</span>';
       actionsPanel.appendChild(empty);
       return;
     }
@@ -298,21 +300,70 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const actions = getActionsFor(active.viewType, actionScopes(active));
     if (actions.length === 0) {
       const empty = el('div', 'ai-empty');
-      empty.innerHTML = `<strong>No AI edits for ${active.viewType || 'plain'} yet.</strong><span>Current edit tools target CSV/TSV, JSON, Markdown, and Mermaid.</span>`;
+      empty.innerHTML = `<strong>No assist tools for ${active.viewType || 'plain'} yet.</strong><span>Current tools target CSV/TSV, JSON, Markdown, and Mermaid.</span>`;
       actionsPanel.appendChild(empty);
       return;
     }
 
-    const list = el('div', 'ai-action-list');
-    for (const action of actions) {
+    const localActions = actions.filter(action => !actionUsesAI(action));
+    const aiActions = actions.filter(actionUsesAI);
+    const aiBlocked = !providerKeyConfigured();
+
+    function renderActionButton(action, { aiPowered }) {
       const btn = el('button', 'ai-action-card');
       btn.type = 'button';
-      btn.disabled = !!actionRunning;
-      btn.innerHTML = `<span class="ai-action-icon">${action.icon || ''}</span><span><strong>${action.label}</strong><small>${[].concat(action.scope).join(' / ')}</small></span>`;
+      btn.classList.toggle('ai-powered', aiPowered);
+      btn.classList.toggle('local-tool', !aiPowered);
+      btn.disabled = !!actionRunning || (aiPowered && aiBlocked);
+      btn.title = aiPowered && aiBlocked ? `${provider.displayName} API key is not configured.` : '';
+      const icon = el('span', 'ai-action-icon');
+      icon.innerHTML = action.icon || '';
+      const text = el('span', 'ai-action-copy');
+      text.appendChild(el('strong', '', action.label));
+      text.appendChild(el('small', '', action.description || [].concat(action.scope).join(' / ')));
+      const meta = el('span', 'ai-action-meta');
+      meta.appendChild(el('span', aiPowered ? 'ai-action-badge ai' : 'ai-action-badge local', aiPowered ? 'Uses AI provider' : 'Runs locally'));
+      meta.appendChild(el('span', 'ai-action-scope', [].concat(action.scope).join(' / ')));
+      if (aiPowered && aiBlocked) meta.appendChild(el('span', 'ai-action-warning', 'Requires provider key'));
+      text.appendChild(meta);
+      btn.append(icon, text);
       btn.addEventListener('click', () => runAIAction(action));
-      list.appendChild(btn);
+      return btn;
     }
-    actionsPanel.appendChild(list);
+
+    function renderActionSection(title, subtitle, items, options = {}) {
+      if (!items.length) return;
+      const section = el('section', 'ai-action-section');
+      const sectionHead = el('div', 'ai-action-section-head');
+      sectionHead.appendChild(el('strong', '', title));
+      sectionHead.appendChild(el('span', '', subtitle));
+      if (options.setupProvider) {
+        const setup = el('button', '', 'Set up provider');
+        setup.type = 'button';
+        setup.addEventListener('click', openProviderSettings);
+        sectionHead.appendChild(setup);
+      }
+      section.appendChild(sectionHead);
+      const list = el('div', 'ai-action-list');
+      for (const action of items) list.appendChild(renderActionButton(action, { aiPowered: options.aiPowered === true }));
+      section.appendChild(list);
+      actionsPanel.appendChild(section);
+    }
+
+    renderActionSection(
+      'AI-powered edits',
+      aiBlocked
+        ? `${provider.displayName} needs an API key before these can run. Local tools below still work.`
+        : `Uses ${providerStatusText()} and may send document context to the configured provider.`,
+      aiActions,
+      { aiPowered: true, setupProvider: aiBlocked },
+    );
+    renderActionSection(
+      'Local format tools',
+      'No AI provider or API key. Runs locally in FormatPad.',
+      localActions,
+      { aiPowered: false },
+    );
   }
 
   function renderMessageContent(container, msg) {
@@ -536,6 +587,18 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
 
   function providerUsesStoredKey() {
     return provider.needsKey || keyStatus.providers?.[provider.id]?.hasKey === true;
+  }
+
+  function actionUsesAI(action) {
+    return action.requiresAI !== false;
+  }
+
+  function providerKeyConfigured() {
+    return !provider.needsKey || keyStatus.providers?.[provider.id]?.hasKey === true;
+  }
+
+  function providerStatusText() {
+    return `${provider.displayName}${model ? ` / ${model}` : ''}`;
   }
 
   async function* chatWithCurrentProvider({ requestMessages, tools = [], abortSignal }) {
@@ -1147,6 +1210,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
             await keyStore.remove(selected);
             keyStatus = await keyStore.status();
             refreshFields();
+            renderActions();
           },
         },
         {
@@ -1168,6 +1232,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
             }
             keyStatus = await keyStore.status();
             renderHeader();
+            renderActions();
             updateFooter();
             hooks.closeModal?.();
           },
@@ -1340,7 +1405,11 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   renderMode();
   renderMessages();
   refreshActiveContext({ force: true });
-  keyStore.status().then(status => { keyStatus = status || keyStatus; }).catch(() => {});
+  keyStore.status().then(status => {
+    keyStatus = status || keyStatus;
+    renderHeader();
+    renderActions();
+  }).catch(() => {});
   loadHistory();
   const initialVisible = localStorage.getItem(LS.visible) === 'true';
   setSidebarVisible(root, resize, initialVisible);
