@@ -450,7 +450,8 @@ function buildSpawnArgs(shell, env, appDataPath) {
   }
   if (shell.family === 'powershell') {
     return {
-      args: ['-NoLogo', '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, 'powershell.ps1')],
+      // Load the user's PowerShell profile so CLI aliases and PATH additions match external terminals.
+      args: ['-NoLogo', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, 'powershell.ps1')],
       env,
     };
   }
