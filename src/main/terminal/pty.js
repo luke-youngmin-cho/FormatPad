@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -8,6 +9,7 @@ const DEFAULT_COLS = 100;
 const DEFAULT_ROWS = 28;
 let ptyModule = null;
 let ptyLoadError = null;
+let cachedPathDirs = null;
 
 function loadPtyModule() {
   if (ptyModule) return ptyModule;
@@ -41,18 +43,93 @@ function pathExts() {
     .filter(Boolean);
 }
 
+function expandWindowsEnv(value) {
+  if (process.platform !== 'win32') return value;
+  return String(value || '').replace(/%([^%]+)%/g, (match, name) => process.env[name] || match);
+}
+
+function readRegistryPath(root, valueName = 'Path') {
+  if (process.platform !== 'win32') return '';
+  try {
+    const output = childProcess.execFileSync('reg.exe', ['query', root, '/v', valueName], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 1500,
+    });
+    const line = output.split(/\r?\n/).find(item => new RegExp(`\\s${valueName}\\s+REG_`, 'i').test(item));
+    return line?.replace(new RegExp(`^\\s*${valueName}\\s+REG_\\w+\\s+`, 'i'), '').trim() || '';
+  } catch {
+    return '';
+  }
+}
+
+function commonWindowsPathDirs() {
+  if (process.platform !== 'win32') return [];
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  return [
+    path.join(appData, 'npm'),
+    path.join(localAppData, 'Microsoft', 'WindowsApps'),
+    path.join(localAppData, 'Microsoft', 'WinGet', 'Links'),
+    path.join(localAppData, 'Volta', 'bin'),
+    path.join(home, '.local', 'bin'),
+    path.join(home, 'scoop', 'shims'),
+    path.join(programFiles, 'nodejs'),
+  ];
+}
+
+function pathDirs() {
+  if (cachedPathDirs) return cachedPathDirs;
+  const values = [process.env.PATH || process.env.Path || ''];
+  if (process.platform === 'win32') {
+    values.push(
+      readRegistryPath('HKCU\\Environment', 'Path'),
+      readRegistryPath('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment', 'Path'),
+      commonWindowsPathDirs().join(path.delimiter),
+    );
+  }
+  const seen = new Set();
+  cachedPathDirs = values
+    .flatMap(value => expandWindowsEnv(value).split(path.delimiter))
+    .map(item => item.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean)
+    .filter(item => {
+      const key = process.platform === 'win32' ? item.toLowerCase() : item;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return cachedPathDirs;
+}
+
 function findOnPath(name) {
   if (!name) return null;
   if (path.isAbsolute(name) && fs.existsSync(name)) return name;
-  const dirs = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
   const exts = path.extname(name) ? [''] : pathExts();
-  for (const dir of dirs) {
+  for (const dir of pathDirs()) {
     for (const ext of exts) {
       const candidate = path.join(dir, `${name}${ext}`);
       if (fs.existsSync(candidate)) return candidate;
     }
   }
   return null;
+}
+
+function mergedPathValue(extraDirs = []) {
+  const dirs = [...extraDirs, ...pathDirs()];
+  const seen = new Set();
+  return dirs
+    .filter(Boolean)
+    .filter(item => {
+      const key = process.platform === 'win32' ? item.toLowerCase() : item;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(path.delimiter);
 }
 
 function existing(candidates) {
@@ -84,6 +161,46 @@ function windowsPackageLocalCacheCandidates(packagePrefix, relativeParts) {
   } catch {
     return [];
   }
+}
+
+function windowsNodeVersionCommandCandidates(commandName) {
+  if (process.platform !== 'win32') return [];
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+  const candidates = [];
+
+  const nvmDirs = [
+    process.env.NVM_HOME,
+    path.join(appData, 'nvm'),
+    path.join(home, 'AppData', 'Roaming', 'nvm'),
+  ].filter(Boolean);
+  for (const nvmDir of nvmDirs) {
+    try {
+      for (const entry of fs.readdirSync(nvmDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) candidates.push(path.join(nvmDir, entry.name, `${commandName}.cmd`));
+      }
+    } catch {}
+  }
+
+  const fnmRoots = [
+    path.join(appData, 'fnm', 'node-versions'),
+    path.join(localAppData, 'fnm', 'node-versions'),
+    path.join(home, '.fnm', 'node-versions'),
+  ];
+  for (const root of fnmRoots) {
+    try {
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        candidates.push(
+          path.join(root, entry.name, 'installation', `${commandName}.cmd`),
+          path.join(root, entry.name, 'installation', 'bin', `${commandName}.cmd`),
+        );
+      }
+    } catch {}
+  }
+
+  return candidates;
 }
 
 const AI_CLI_PROFILES = [
@@ -132,11 +249,20 @@ function aiCliCandidates(commandName) {
     }
     candidates.push(
       findOnPath(commandName),
+      path.join(home, '.local', 'bin', `${commandName}.exe`),
       path.join(appData, 'npm', `${commandName}.cmd`),
       path.join(localAppData, 'Microsoft', 'WinGet', 'Links', `${commandName}.exe`),
       path.join(localAppData, 'Volta', 'bin', `${commandName}.exe`),
       path.join(home, 'scoop', 'shims', `${commandName}.exe`),
+      ...windowsNodeVersionCommandCandidates(commandName),
     );
+    if (commandName === 'gemini') {
+      candidates.push(
+        path.join(localAppData, 'Programs', 'Gemini CLI', 'gemini.exe'),
+        path.join(localAppData, 'Programs', 'Gemini', 'gemini.exe'),
+        path.join(localAppData, 'Google', 'Gemini CLI', 'gemini.exe'),
+      );
+    }
     return candidates;
   }
 
@@ -159,15 +285,32 @@ function aiCliCandidates(commandName) {
 function detectAiCliProfiles() {
   return AI_CLI_PROFILES.map(profile => {
     const command = existing(aiCliCandidates(profile.commandName));
+    const fallback = command ? null : aiCliShellFallback(profile);
     return {
       ...profile,
       kind: 'ai-cli',
       family: 'ai-cli',
-      command: command || null,
-      args: [],
-      available: Boolean(command),
+      command: command || fallback?.command || null,
+      args: fallback?.args || [],
+      available: Boolean(command || fallback),
+      description: fallback?.description || profile.description,
     };
   });
+}
+
+function aiCliShellFallback(profile) {
+  if (process.platform !== 'win32' || profile.commandName !== 'gemini') return null;
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+  const powershell = existing([
+    path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    findOnPath('powershell.exe'),
+  ]);
+  if (!powershell) return null;
+  return {
+    command: powershell,
+    args: ['-NoLogo', '-NoExit', '-Command', profile.commandName],
+    description: 'Launch Gemini CLI through PowerShell so user PATH/profile aliases can resolve it.',
+  };
 }
 
 function detectShells() {
@@ -390,8 +533,11 @@ function createPtyManager({ app }) {
 
     const cwd = normalizeCwd(input.cwd, input.workspaceRoot, input.allowOutsideWorkspace === true);
     const shell = shellByRequest(input.shell || input.defaultShell);
+    const envPath = mergedPathValue();
     const mergedEnv = {
       ...process.env,
+      PATH: envPath,
+      ...(process.platform === 'win32' ? { Path: envPath } : {}),
       TERM_PROGRAM: 'FormatPad',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
