@@ -574,6 +574,8 @@ export function createMcpController({ panel, hooks, track }) {
     const toolsOpen = selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id);
     const resourcesOpen = selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id);
     const isRunning = status.state === 'running';
+    const isConnecting = status.state === 'connecting';
+    const isRuntimeEnabled = isRunning || isConnecting;
     const card = el('article', `ai-mcp-card ${isRunning ? 'running' : 'stopped'} ${toolsOpen || resourcesOpen ? 'expanded' : ''}`);
     const head = el('div', 'ai-mcp-card-head');
     const title = el('div', '');
@@ -585,12 +587,12 @@ export function createMcpController({ panel, hooks, track }) {
     title.append(titleLine, metaLine);
     const enable = document.createElement('input');
     enable.type = 'checkbox';
-    enable.checked = !!server.enabled;
+    enable.checked = isRuntimeEnabled;
     enable.disabled = busy;
-    enable.setAttribute('aria-label', `${server.enabled ? 'Disable' : 'Enable'} ${server.label}`);
+    enable.setAttribute('aria-label', `${isRuntimeEnabled ? 'Disable' : 'Enable'} ${server.label}`);
     enable.addEventListener('change', () => toggleServer(server, enable.checked));
     const enableWrap = el('label', 'ai-mcp-enable');
-    enableWrap.append(enable, el('span', '', server.enabled ? 'Enabled' : 'Enable'));
+    enableWrap.append(enable, el('span', '', isRunning ? 'Running' : isConnecting ? 'Starting' : 'Enable'));
     head.append(title, enableWrap);
     card.appendChild(head);
     card.appendChild(el('p', 'ai-mcp-desc', server.description || `${server.command} ${(server.args || []).join(' ')}`));

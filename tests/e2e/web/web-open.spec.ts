@@ -115,6 +115,45 @@ async function installMcpMock(page: Page): Promise<void> {
   });
 }
 
+async function installStoppedMcpMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const server = {
+      id: 'stale',
+      label: 'Stale MCP',
+      enabled: true,
+      command: 'mock',
+      args: [],
+      env: {},
+      description: 'Stopped server with stale enabled config.',
+      readOnlyDefault: true,
+    };
+    (window as any).mcp = {
+      listServers: async () => ({
+        servers: [server],
+        statuses: { stale: { state: 'stopped', toolCount: 0, resourceCount: 0 } },
+      }),
+      setEnabled: async (_id: string, enabled: boolean) => {
+        server.enabled = enabled;
+        return {
+          server,
+          statuses: { stale: { state: enabled ? 'running' : 'stopped', toolCount: 0, resourceCount: 0 } },
+        };
+      },
+      listTools: async () => [],
+      listResources: async () => [],
+      readResource: async () => ({ contents: [] }),
+      prepareToolCall: async () => ({ readOnly: true, canPersistGlobal: true }),
+      callTool: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+      upsertServer: async () => server,
+      removeServer: async () => [server],
+      refreshServer: async () => ({ state: 'stopped', toolCount: 0, resourceCount: 0 }),
+      revokeGlobalPermission: async () => true,
+      exportConfig: async () => ({ version: 1, servers: [server] }),
+      importConfig: async () => [server],
+    };
+  });
+}
+
 test('web build loads, new-file works, no console errors', async ({ page }) => {
   if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
     test.skip(true, 'docs/ not built — run npm run build:web:min first');
@@ -214,6 +253,32 @@ test('MCP tool lists are collapsible and explain argument schemas', async ({ pag
     await expect(page.locator('#fmt-modal')).toContainText('Workspace-relative file path.');
     await expect(page.locator('#fmt-modal')).toContainText('Input schema');
     await expect(page.locator('#fmt-modal textarea')).toHaveValue(/"path": "<path>"/);
+  } finally {
+    await close();
+  }
+});
+
+test('MCP stopped servers do not appear enabled from stale config', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installStoppedMcpMock(page);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('#btn-ai').click();
+    await page.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
+
+    const card = page.locator('.ai-mcp-card').filter({ hasText: 'Stale MCP' });
+    await expect(card).toBeVisible();
+    await expect(card.getByRole('checkbox', { name: 'Enable Stale MCP' })).not.toBeChecked();
+    await expect(card).toContainText('stopped');
+    await card.getByRole('button', { name: 'Tools' }).click();
+    await expect(page.locator('.ai-action-status')).toContainText('Enable Stale MCP before using MCP tools.');
   } finally {
     await close();
   }

@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 import { launchElectron } from '../helpers';
 
 test('desktop app launches, window title contains FormatPad', async () => {
@@ -23,9 +25,31 @@ test('desktop app launches, window title contains FormatPad', async () => {
   await win.evaluate(() => (window as any).formatpadCommands.runCommand('file.new'));
   await expect(win.locator('.ai-context-chip')).toContainText('Context:');
 
+  const userData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
+  const mcpConfigPath = path.join(userData, 'mcp-servers.json');
+  fs.writeFileSync(mcpConfigPath, JSON.stringify({
+    version: 1,
+    servers: [{
+      id: 'filesystem',
+      label: 'Filesystem (workspace)',
+      transport: 'stdio',
+      enabled: true,
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem@2026.1.14', '${workspacePath}'],
+      env: {},
+      description: 'Stale enabled state from a previous session.',
+      readOnlyDefault: true,
+    }],
+  }, null, 2), 'utf-8');
+
   await win.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
   await expect(win.locator('.ai-mcp-panel')).toContainText('MCP servers');
   const filesystemCard = win.locator('.ai-mcp-card').filter({ hasText: 'Filesystem (workspace)' });
+  await expect(filesystemCard.getByRole('checkbox', { name: 'Enable Filesystem (workspace)' })).not.toBeChecked();
+  await win.locator('.ai-mcp-panel').getByRole('button', { name: 'Refresh' }).click();
+  await expect(win.locator('.ai-action-status')).toContainText('MCP server status refreshed.');
+  const savedMcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8'));
+  expect(savedMcpConfig.servers.find((server: { id?: string }) => server.id === 'filesystem')?.enabled).toBe(false);
   await filesystemCard.getByRole('button', { name: 'Tools' }).click();
   await expect(win.locator('.ai-action-status')).toContainText('Enable Filesystem (workspace) before using MCP tools.');
   await filesystemCard.getByRole('button', { name: 'Resources' }).click();
