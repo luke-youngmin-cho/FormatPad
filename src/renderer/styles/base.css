@@ -3908,6 +3908,10 @@ body.drag-over::after {
   padding: 5px 8px;
   font-size: 11px;
 }
+.ai-mcp-actions button:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
 .ai-mcp-tool-list {
   display: grid;
   gap: 6px;

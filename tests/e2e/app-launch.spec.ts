@@ -25,6 +25,12 @@ test('desktop app launches, window title contains FormatPad', async () => {
 
   await win.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
   await expect(win.locator('.ai-mcp-panel')).toContainText('MCP servers');
+  const filesystemCard = win.locator('.ai-mcp-card').filter({ hasText: 'Filesystem (workspace)' });
+  await filesystemCard.getByRole('button', { name: 'Tools' }).click();
+  await expect(win.locator('.ai-action-status')).toContainText('Enable Filesystem (workspace) before using MCP tools.');
+  await filesystemCard.getByRole('button', { name: 'Resources' }).click();
+  await expect(win.locator('.ai-action-status')).toContainText('Enable Filesystem (workspace) before using MCP resources.');
+  await expect(filesystemCard.getByRole('button', { name: 'Open URI' })).toBeVisible();
 
   await win.evaluate(() => (window as any).formatpadCommands.runCommand('git.openPanel'));
   await expect(win.locator('#fmt-modal')).toContainText('Git Status and Commands');

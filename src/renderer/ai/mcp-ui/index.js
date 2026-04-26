@@ -73,8 +73,10 @@ export function createMcpController({ panel, hooks, track }) {
   let statuses = {};
   let statusMessage = '';
   let toolCache = new Map();
+  let resourceCache = new Map();
   let aliasMap = new Map();
   let selectedServerId = '';
+  let selectedPanel = 'tools';
   let busy = false;
   const callLog = [];
 
@@ -92,6 +94,14 @@ export function createMcpController({ panel, hooks, track }) {
     const tools = await window.mcp.listTools(serverId);
     toolCache.set(serverId, tools || []);
     return tools || [];
+  }
+
+  async function ensureResources(serverId) {
+    const status = statuses[serverId];
+    if (status?.state !== 'running') return [];
+    const resources = await window.mcp.listResources(serverId);
+    resourceCache.set(serverId, resources || []);
+    return resources || [];
   }
 
   async function getToolSpecs() {
@@ -233,6 +243,20 @@ export function createMcpController({ panel, hooks, track }) {
     const uri = await promptText('Open MCP resource', 'Resource URI', '');
     if (!uri) return;
     await openResource(server, { uri, name: uri });
+  }
+
+  function showServerUnavailable(server, status, feature) {
+    const suffix = status?.lastError ? ` Last error: ${status.lastError}` : '';
+    statusMessage = `Enable ${server.label} before using MCP ${feature}. Current state: ${status?.state || 'stopped'}.${suffix}`;
+    render();
+  }
+
+  function renderListRow(title, subtitle, onClick) {
+    const row = el('button', 'ai-mcp-tool');
+    row.type = 'button';
+    row.append(el('strong', '', title), el('span', '', subtitle || 'No description'));
+    row.addEventListener('click', onClick);
+    return row;
   }
 
   function promptText(title, label, value) {
@@ -379,7 +403,10 @@ export function createMcpController({ panel, hooks, track }) {
     const head = el('div', 'ai-mcp-card-head');
     const title = el('div', '');
     title.appendChild(el('strong', '', server.label));
-    title.appendChild(el('span', '', `${status.state}${status.toolCount ? ` / ${status.toolCount} tools` : ''}`));
+    const statusParts = [status.state];
+    if (status.toolCount) statusParts.push(`${status.toolCount} tools`);
+    if (status.resourceCount) statusParts.push(`${status.resourceCount} resources`);
+    title.appendChild(el('span', '', statusParts.join(' / ')));
     const enable = document.createElement('input');
     enable.type = 'checkbox';
     enable.checked = server.enabled && status.state === 'running';
@@ -397,29 +424,82 @@ export function createMcpController({ panel, hooks, track }) {
     edit.addEventListener('click', () => editServer(server));
     const tools = el('button', '', 'Tools');
     tools.type = 'button';
-    tools.disabled = status.state !== 'running';
+    tools.disabled = busy;
+    tools.title = status.state === 'running' ? 'List tools exposed by this MCP server.' : 'Enable this server before listing tools.';
     tools.addEventListener('click', async () => {
+      if (status.state !== 'running') {
+        showServerUnavailable(server, status, 'tools');
+        return;
+      }
       selectedServerId = server.id;
-      await ensureTools(server.id);
+      selectedPanel = 'tools';
+      statusMessage = `Loading tools from ${server.label}...`;
+      render();
+      try {
+        const items = await ensureTools(server.id);
+        statusMessage = items.length
+          ? `${server.label}: ${items.length} MCP tools available.`
+          : `${server.label}: no tools reported.`;
+      } catch (err) {
+        toolCache.delete(server.id);
+        statusMessage = `${server.label}: failed to list tools - ${err.message || String(err)}`;
+        hooks.notify?.('MCP tools', err);
+      }
       render();
     });
-    const resources = el('button', '', 'Open resource');
+    const resources = el('button', '', 'Resources');
     resources.type = 'button';
-    resources.disabled = status.state !== 'running';
-    resources.addEventListener('click', () => openResourcePrompt(server));
-    actions.append(edit, tools, resources);
+    resources.disabled = busy;
+    resources.title = status.state === 'running' ? 'List resources exposed by this MCP server.' : 'Enable this server before listing resources.';
+    resources.addEventListener('click', async () => {
+      if (status.state !== 'running') {
+        showServerUnavailable(server, status, 'resources');
+        return;
+      }
+      selectedServerId = server.id;
+      selectedPanel = 'resources';
+      statusMessage = `Loading resources from ${server.label}...`;
+      render();
+      try {
+        const items = await ensureResources(server.id);
+        statusMessage = items.length
+          ? `${server.label}: ${items.length} MCP resources available.`
+          : `${server.label}: no resources reported. Use Open URI if you know a resource URI.`;
+      } catch (err) {
+        resourceCache.delete(server.id);
+        statusMessage = `${server.label}: failed to list resources - ${err.message || String(err)}`;
+        hooks.notify?.('MCP resources', err);
+      }
+      render();
+    });
+    const openUri = el('button', '', 'Open URI');
+    openUri.type = 'button';
+    openUri.disabled = busy;
+    openUri.title = status.state === 'running' ? 'Open a resource by URI.' : 'Enable this server before opening resources.';
+    openUri.addEventListener('click', () => {
+      if (status.state !== 'running') {
+        showServerUnavailable(server, status, 'resources');
+        return;
+      }
+      openResourcePrompt(server);
+    });
+    actions.append(edit, tools, resources, openUri);
     card.appendChild(actions);
 
-    if (selectedServerId === server.id && toolCache.has(server.id)) {
+    if (selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id)) {
       const list = el('div', 'ai-mcp-tool-list');
       for (const tool of toolCache.get(server.id)) {
-        const row = el('button', 'ai-mcp-tool');
-        row.type = 'button';
-        row.innerHTML = `<strong>${tool.name}</strong><span>${tool.description || 'No description'}</span>`;
-        row.addEventListener('click', () => runToolPrompt(server, tool));
-        list.appendChild(row);
+        list.appendChild(renderListRow(tool.name, tool.description || 'No description', () => runToolPrompt(server, tool)));
       }
       if (!list.childElementCount) list.appendChild(el('div', 'ai-history-empty', 'No tools reported.'));
+      card.appendChild(list);
+    }
+    if (selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id)) {
+      const list = el('div', 'ai-mcp-tool-list');
+      for (const resource of resourceCache.get(server.id)) {
+        list.appendChild(renderListRow(resource.name || resource.uri, resource.description || resource.uri, () => openResource(server, resource)));
+      }
+      if (!list.childElementCount) list.appendChild(el('div', 'ai-history-empty', 'No resources reported. Use Open URI if you know a resource URI.'));
       card.appendChild(list);
     }
     return card;
