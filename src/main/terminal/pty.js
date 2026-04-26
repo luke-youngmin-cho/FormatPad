@@ -451,9 +451,11 @@ function buildSpawnArgs(shell, env, appDataPath) {
   if (shell.family === 'ai-cli') {
     const args = Array.isArray(shell.args) ? shell.args.map(String) : [];
     if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(shell.command || '')) {
+      const commandLine = [quoteCmdArg(shell.command), ...args.map(quoteCmdArg)].join(' ');
       return {
         command: process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe'),
-        args: ['/D', '/K', [quoteCmdArg(shell.command), ...args.map(quoteCmdArg)].join(' ')],
+        // Match UTerminal's CreateProcess wrapper: .cmd/.bat shims need cmd /S /C with an outer quoted command line.
+        args: ['/D', '/S', '/C', `"${commandLine}"`],
         env,
       };
     }
