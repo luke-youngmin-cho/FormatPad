@@ -285,7 +285,7 @@ function aiCliCandidates(commandName) {
 function detectAiCliProfiles() {
   return AI_CLI_PROFILES.map(profile => {
     const command = existing(aiCliCandidates(profile.commandName));
-    const fallback = command ? null : aiCliShellFallback(profile);
+    const fallback = command ? null : (aiCliNpmExecFallback(profile) || aiCliShellFallback(profile));
     return {
       ...profile,
       kind: 'ai-cli',
@@ -296,6 +296,17 @@ function detectAiCliProfiles() {
       description: fallback?.description || profile.description,
     };
   });
+}
+
+function aiCliNpmExecFallback(profile) {
+  if (process.platform !== 'win32' || profile.commandName !== 'gemini') return null;
+  const npm = findOnPath('npm.cmd') || findOnPath('npm');
+  if (!npm) return null;
+  return {
+    command: npm,
+    args: ['exec', '--package', '@google/gemini-cli', '--', 'gemini'],
+    description: 'Launch Gemini CLI via npm exec when the gemini shim is not directly visible to Electron.',
+  };
 }
 
 function aiCliShellFallback(profile) {
@@ -535,10 +546,13 @@ function createPtyManager({ app }) {
     const cwd = normalizeCwd(input.cwd, input.workspaceRoot, input.allowOutsideWorkspace === true);
     const shell = shellByRequest(input.shell || input.defaultShell);
     const envPath = mergedPathValue();
+    const baseEnv = { ...process.env };
+    for (const key of Object.keys(baseEnv)) {
+      if (/^path$/i.test(key)) delete baseEnv[key];
+    }
     const mergedEnv = {
-      ...process.env,
-      PATH: envPath,
-      ...(process.platform === 'win32' ? { Path: envPath } : {}),
+      ...baseEnv,
+      [process.platform === 'win32' ? 'Path' : 'PATH']: envPath,
       TERM_PROGRAM: 'FormatPad',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
