@@ -294,13 +294,12 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
         <span class="terminal-pty-status"></span>
       </div>
     </div>
-    <div class="terminal-new-panel hidden">
-      <div class="terminal-new-panel-head">
+    <div class="terminal-new-popover hidden" role="menu" aria-label="New terminal profile picker">
+      <div class="terminal-new-popover-head">
         <div>
           <strong>New terminal</strong>
-          <span>Choose a shell profile. Closing happens from each terminal tab.</span>
+          <span>Choose a shell profile</span>
         </div>
-        <button type="button" class="terminal-new-cancel" aria-label="Close new terminal picker">x</button>
       </div>
       <label class="terminal-new-cwd">
         <span>CWD</span>
@@ -340,10 +339,9 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   const tabStrip = root.querySelector('.terminal-tab-strip');
   const activeContextEl = root.querySelector('.terminal-active-context');
   const statusEl = root.querySelector('.terminal-pty-status');
-  const newPanel = root.querySelector('.terminal-new-panel');
+  const newPopover = root.querySelector('.terminal-new-popover');
   const shellList = root.querySelector('.terminal-shell-list');
   const newCwdInput = root.querySelector('.terminal-new-cwd input');
-  const newPanelCancel = root.querySelector('.terminal-new-cancel');
   const stage = root.querySelector('.terminal-pty-stage');
   const emptyState = root.querySelector('.terminal-pty-empty');
   const emptyNewBtn = root.querySelector('.terminal-empty-new');
@@ -362,7 +360,8 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   let removePtyListener = null;
   let restored = false;
   let draftText = '';
-  let newPanelOpen = false;
+  let newPopoverOpen = false;
+  let newPopoverPoint = null;
   let pendingNewCwd = '';
   let ptyStatus = available ? { available: true } : { available: false, reason: 'Full terminal is available only in the Electron desktop app.' };
 
@@ -470,7 +469,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     add.type = 'button';
     add.title = 'Select shell profile (Ctrl+Shift+`)';
     add.disabled = !available;
-    add.addEventListener('click', () => openNewTerminalPanel());
+    add.addEventListener('click', (event) => openNewTerminalPanel(event));
     tabStrip.appendChild(add);
     setControlsEnabled(available && ptyStatus.available !== false);
     updateEmptyState();
@@ -478,9 +477,34 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     updateActiveContext();
   }
 
+  function resolveNewPopoverPoint(trigger) {
+    if (trigger && Number.isFinite(trigger.clientX) && Number.isFinite(trigger.clientY)) {
+      return { x: trigger.clientX, y: trigger.clientY };
+    }
+    const target = trigger?.currentTarget || trigger?.target || root.querySelector('.terminal-tab-add') || emptyNewBtn || root;
+    const rect = target.getBoundingClientRect?.();
+    if (!rect) return { x: 16, y: 48 };
+    return { x: rect.left, y: rect.bottom };
+  }
+
+  function positionNewTerminalPopover() {
+    if (!newPopoverOpen || !newPopoverPoint) return;
+    const margin = 8;
+    const offset = 6;
+    const rect = newPopover.getBoundingClientRect();
+    const width = rect.width || 360;
+    const height = rect.height || 280;
+    let left = newPopoverPoint.x;
+    let top = newPopoverPoint.y + offset;
+    if (left + width > window.innerWidth - margin) left = window.innerWidth - width - margin;
+    if (top + height > window.innerHeight - margin) top = newPopoverPoint.y - height - offset;
+    newPopover.style.left = `${Math.max(margin, Math.round(left))}px`;
+    newPopover.style.top = `${Math.max(margin, Math.round(top))}px`;
+  }
+
   function renderNewTerminalPanel() {
-    newPanel.classList.toggle('hidden', !newPanelOpen);
-    if (!newPanelOpen) return;
+    newPopover.classList.toggle('hidden', !newPopoverOpen);
+    if (!newPopoverOpen) return;
 
     if (!pendingNewCwd) pendingNewCwd = defaultCwd();
     newCwdInput.value = pendingNewCwd;
@@ -490,6 +514,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       const message = el('div', 'terminal-shell-empty');
       message.textContent = ptyStatus.reason || 'Integrated terminal is unavailable in this environment.';
       shellList.appendChild(message);
+      positionNewTerminalPopover();
       return;
     }
 
@@ -497,6 +522,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       const message = el('div', 'terminal-shell-empty');
       message.textContent = 'No shell profiles were detected on this system.';
       shellList.appendChild(message);
+      positionNewTerminalPopover();
       return;
     }
 
@@ -513,14 +539,17 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       if (shell.id === preferred) card.appendChild(el('span', 'terminal-shell-badge', 'Default'));
       card.addEventListener('click', () => {
         localStorage.setItem(LAST_SHELL_KEY, shell.id);
+        closeNewTerminalPanel({ focus: false });
         newTerminal({ shell: shell.id, cwd: newCwdInput.value.trim() || defaultCwd() });
       });
       shellList.appendChild(card);
     }
+    positionNewTerminalPopover();
   }
 
-  async function openNewTerminalPanel() {
-    newPanelOpen = true;
+  async function openNewTerminalPanel(trigger) {
+    newPopoverOpen = true;
+    newPopoverPoint = resolveNewPopoverPoint(trigger);
     pendingNewCwd = defaultCwd();
     renderNewTerminalPanel();
     if (!available) {
@@ -532,10 +561,25 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     setTimeout(() => newCwdInput?.focus(), 0);
   }
 
-  function closeNewTerminalPanel() {
-    newPanelOpen = false;
+  function closeNewTerminalPanel(options = {}) {
+    newPopoverOpen = false;
+    newPopoverPoint = null;
     renderNewTerminalPanel();
-    activeSession()?.term.focus();
+    if (options.focus !== false) activeSession()?.term.focus();
+  }
+
+  function handleDocumentPointerDown(event) {
+    if (!newPopoverOpen) return;
+    const target = event.target;
+    if (newPopover.contains(target)) return;
+    if (target?.closest?.('.terminal-tab-add, .terminal-empty-new')) return;
+    closeNewTerminalPanel({ focus: false });
+  }
+
+  function handleDocumentKeyDown(event) {
+    if (!newPopoverOpen || event.key !== 'Escape') return;
+    event.preventDefault();
+    closeNewTerminalPanel();
   }
 
   function activateSession(id) {
@@ -803,8 +847,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     activeSession()?.term.focus();
   }
 
-  emptyNewBtn?.addEventListener('click', () => openNewTerminalPanel());
-  newPanelCancel?.addEventListener('click', closeNewTerminalPanel);
+  emptyNewBtn?.addEventListener('click', (event) => openNewTerminalPanel(event));
   newCwdInput?.addEventListener('input', () => {
     pendingNewCwd = newCwdInput.value;
   });
@@ -817,9 +860,15 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     if (event.key === 'Enter') {
       event.preventDefault();
       const preferred = localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id;
-      if (preferred) newTerminal({ shell: preferred, cwd: newCwdInput.value.trim() || defaultCwd() });
+      if (preferred) {
+        closeNewTerminalPanel({ focus: false });
+        newTerminal({ shell: preferred, cwd: newCwdInput.value.trim() || defaultCwd() });
+      }
     }
   });
+  document.addEventListener('pointerdown', handleDocumentPointerDown, true);
+  document.addEventListener('keydown', handleDocumentKeyDown, true);
+  window.addEventListener('resize', positionNewTerminalPopover);
   draftPaste.addEventListener('click', pasteDraft);
   draftCopy.addEventListener('click', async () => {
     if (draftText) await navigator.clipboard.writeText(draftText);
@@ -863,6 +912,9 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       return null;
     },
     destroy() {
+      document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
+      document.removeEventListener('keydown', handleDocumentKeyDown, true);
+      window.removeEventListener('resize', positionNewTerminalPopover);
       if (removePtyListener) removePtyListener();
       for (const session of sessions.slice()) closeSession(session.id);
     },

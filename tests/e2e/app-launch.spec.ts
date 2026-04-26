@@ -38,8 +38,10 @@ test('desktop app launches, window title contains FormatPad', async () => {
   await expect(win.locator('.terminal-kill')).toHaveCount(0);
   await expect(win.locator('.terminal-tab-add')).toBeVisible();
   await win.locator('.terminal-tab-add').click();
-  await expect(win.locator('.terminal-new-panel')).toBeVisible();
-  await expect(win.locator('.terminal-new-panel')).toContainText('Choose a shell profile');
+  await expect(win.locator('.terminal-new-panel')).toHaveCount(0);
+  await expect(win.locator('.terminal-new-popover')).toBeVisible();
+  await expect(win.locator('.terminal-new-popover')).toHaveCSS('position', 'fixed');
+  await expect(win.locator('.terminal-new-popover')).toContainText('Choose a shell profile');
   const shellCardCount = await win.locator('.terminal-shell-card').count();
   const shellEmptyCount = await win.locator('.terminal-shell-empty').count();
   expect(shellCardCount + shellEmptyCount).toBeGreaterThan(0);
