@@ -17,10 +17,8 @@ async function installHangingAiMock(page: Page): Promise<void> {
         return originalFetch(input, init);
       }
 
-      const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"still running"}}]}\n\n'));
           init?.signal?.addEventListener('abort', () => {
             controller.error(new DOMException('Aborted', 'AbortError'));
           }, { once: true });
@@ -466,6 +464,7 @@ test('AI chat can run without an active document and can be canceled', async ({ 
     await page.locator('.ai-composer').fill('Can you answer without a document?');
     await page.locator('.ai-send').click();
     await expect(page.locator('.ai-send')).toHaveText('Stop');
+    await expect(page.locator('.ai-message.assistant .ai-loading-line')).toContainText('Waiting for AI response');
     await page.locator('.ai-send').click();
     await expect(page.locator('.ai-send')).toHaveText('Send');
     await expect(page.locator('.ai-log')).toContainText('Canceled.');
@@ -486,6 +485,14 @@ test('AI chat can run without an active document and can be canceled', async ({ 
     expect(messageGaps.userRight).toBeLessThan(24);
     expect(messageGaps.assistantLeft).toBeLessThan(24);
     expect(messageGaps.assistantRight).toBeGreaterThan(30);
+    const historyItem = page.locator('.ai-history-item').first();
+    await expect(historyItem).toContainText('Can you answer without a document?');
+    await historyItem.hover();
+    await expect(historyItem.locator('.ai-history-delete')).toHaveCSS('opacity', '1');
+    page.once('dialog', dialog => dialog.accept());
+    await historyItem.locator('.ai-history-delete').click();
+    await expect(page.locator('.ai-history-item')).toHaveCount(0);
+    await expect(page.locator('.ai-chat-panel .ai-empty')).toContainText('AI sidebar is ready');
   } finally {
     await close();
   }

@@ -144,6 +144,29 @@ export function createMcpController({ panel, hooks, track }) {
   let busy = false;
   const callLog = [];
 
+  function loadingStatus(label) {
+    const node = el('div', 'ai-action-status');
+    node.append(el('span', 'ai-spinner'), el('span', '', label));
+    return node;
+  }
+
+  function statusNode() {
+    if (!statusMessage) return null;
+    return busy ? loadingStatus(statusMessage) : el('div', 'ai-action-status', statusMessage);
+  }
+
+  async function withBusy(label, fn) {
+    busy = true;
+    statusMessage = label;
+    render();
+    try {
+      return await fn();
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   async function refresh() {
     if (!available) return;
     const data = await window.mcp.listServers();
@@ -227,8 +250,12 @@ export function createMcpController({ panel, hooks, track }) {
   }
 
   async function callToolWithPermission(server, tool, args) {
-    const permission = await window.mcp.prepareToolCall(server.id, tool.name);
-    const result = await window.mcp.callTool(server.id, tool.name, args);
+    const permission = await withBusy(`Preparing ${server.label} / ${tool.name} permission...`, () => (
+      window.mcp.prepareToolCall(server.id, tool.name)
+    ));
+    const result = await withBusy(`Running ${server.label} / ${tool.name}...`, () => (
+      window.mcp.callTool(server.id, tool.name, args)
+    ));
     if (isCanceledToolResult(result)) {
       statusMessage = `${server.label} / ${tool.name} canceled.`;
       track?.('mcp_tool_cancel', { server: server.id, tool: tool.name });
@@ -241,6 +268,7 @@ export function createMcpController({ panel, hooks, track }) {
       text: textFromToolResult(result),
     });
     callLog.splice(12);
+    statusMessage = `${server.label} / ${tool.name} completed.`;
     track?.('mcp_tool_call', { server: server.id, tool: tool.name, read_only: String(permission.readOnly) });
     return result;
   }
@@ -309,9 +337,12 @@ export function createMcpController({ panel, hooks, track }) {
 
   async function openResource(server, resource) {
     try {
-      const result = await window.mcp.readResource(server.id, resource.uri);
-      const content = resourceText(result) || JSON.stringify(result, null, 2);
-      hooks.createTextTab?.(resource.name || resource.uri, content, guessViewType(resource.uri, resource.mimeType));
+      await withBusy(`Opening ${resource.name || resource.uri}...`, async () => {
+        const result = await window.mcp.readResource(server.id, resource.uri);
+        const content = resourceText(result) || JSON.stringify(result, null, 2);
+        hooks.createTextTab?.(resource.name || resource.uri, content, guessViewType(resource.uri, resource.mimeType));
+        statusMessage = `${resource.name || resource.uri} opened.`;
+      });
     } catch (err) {
       hooks.notify?.('MCP resource', err);
     }
@@ -340,6 +371,7 @@ export function createMcpController({ panel, hooks, track }) {
   function renderListRow(title, subtitle, onClick, meta = '') {
     const row = el('button', 'ai-mcp-tool');
     row.type = 'button';
+    row.disabled = busy;
     row.append(el('strong', '', title), el('span', '', subtitle || 'No description'));
     if (meta) row.appendChild(el('small', 'ai-mcp-tool-meta', meta));
     row.addEventListener('click', onClick);
@@ -405,7 +437,7 @@ export function createMcpController({ panel, hooks, track }) {
           primary: true,
           onClick: async () => {
             try {
-              await window.mcp.upsertServer({
+              const config = {
                 id: fields.id.value.trim(),
                 label: fields.label.value.trim(),
                 command: fields.command.value.trim(),
@@ -413,10 +445,13 @@ export function createMcpController({ panel, hooks, track }) {
                 env: JSON.parse(fields.env.value || '{}'),
                 cwd: fields.cwd.value.trim(),
                 enabled: server.enabled === true,
-              });
+              };
               hooks.closeModal?.();
-              await refresh();
-              render();
+              await withBusy('Saving MCP server...', async () => {
+                await window.mcp.upsertServer(config);
+                await refresh();
+                statusMessage = `${config.label || config.id || 'MCP server'} saved.`;
+              });
             } catch (err) {
               hooks.notify?.('MCP server', err);
             }
@@ -427,8 +462,11 @@ export function createMcpController({ panel, hooks, track }) {
   }
 
   async function exportConfig() {
-    const config = await window.mcp.exportConfig();
-    hooks.createTextTab?.('mcp-servers.json', JSON.stringify(config, null, 2), 'json');
+    await withBusy('Exporting MCP config...', async () => {
+      const config = await window.mcp.exportConfig();
+      hooks.createTextTab?.('mcp-servers.json', JSON.stringify(config, null, 2), 'json');
+      statusMessage = 'MCP config exported.';
+    });
   }
 
   async function importConfig() {
@@ -447,10 +485,13 @@ export function createMcpController({ panel, hooks, track }) {
           primary: true,
           onClick: async () => {
             try {
-              await window.mcp.importConfig(input.value);
+              const raw = input.value;
               hooks.closeModal?.();
-              await refresh();
-              render();
+              await withBusy('Importing MCP config...', async () => {
+                await window.mcp.importConfig(raw);
+                await refresh();
+                statusMessage = 'MCP config imported.';
+              });
             } catch (err) {
               hooks.notify?.('MCP import', err);
             }
@@ -535,6 +576,7 @@ export function createMcpController({ panel, hooks, track }) {
     const actions = el('div', 'ai-mcp-actions');
     const edit = el('button', '', 'Edit');
     edit.type = 'button';
+    edit.disabled = busy;
     edit.addEventListener('click', () => editServer(server));
     const toolsOpen = selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id);
     const resourcesOpen = selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id);
@@ -555,6 +597,7 @@ export function createMcpController({ panel, hooks, track }) {
       }
       selectedServerId = server.id;
       selectedPanel = 'tools';
+      busy = true;
       statusMessage = `Loading tools from ${server.label}...`;
       render();
       try {
@@ -566,8 +609,10 @@ export function createMcpController({ panel, hooks, track }) {
         toolCache.delete(server.id);
         statusMessage = `${server.label}: failed to list tools - ${err.message || String(err)}`;
         hooks.notify?.('MCP tools', err);
+      } finally {
+        busy = false;
+        render();
       }
-      render();
     });
     const resources = el('button', '', resourcesOpen ? 'Hide resources' : 'Resources');
     resources.type = 'button';
@@ -594,6 +639,7 @@ export function createMcpController({ panel, hooks, track }) {
       }
       selectedServerId = server.id;
       selectedPanel = 'resources';
+      busy = true;
       statusMessage = `Loading resources from ${server.label}...`;
       render();
       try {
@@ -611,8 +657,10 @@ export function createMcpController({ panel, hooks, track }) {
         resourceCache.delete(server.id);
         statusMessage = `${server.label}: failed to list resources - ${err.message || String(err)}`;
         hooks.notify?.('MCP resources', err);
+      } finally {
+        busy = false;
+        render();
       }
-      render();
     });
     const openUri = el('button', '', 'Open URI');
     openUri.type = 'button';
@@ -687,13 +735,17 @@ export function createMcpController({ panel, hooks, track }) {
     title.appendChild(el('span', '', 'Disabled by default. Tool calls always require permission.'));
     const buttons = el('div', 'ai-mcp-actions');
     for (const [label, fn] of [
-      ['Refresh', async () => { await refresh(); render(); }],
+      ['Refresh', async () => withBusy('Refreshing MCP servers...', async () => {
+        await refresh();
+        statusMessage = 'MCP server status refreshed.';
+      })],
       ['Add', () => editServer()],
       ['Export', exportConfig],
       ['Import', importConfig],
     ]) {
       const btn = el('button', '', label);
       btn.type = 'button';
+      btn.disabled = busy;
       btn.addEventListener('click', () => {
         const result = fn();
         if (result?.catch) result.catch(err => hooks.notify?.('MCP', err));
@@ -702,7 +754,8 @@ export function createMcpController({ panel, hooks, track }) {
     }
     head.append(title, buttons);
     panel.appendChild(head);
-    if (statusMessage) panel.appendChild(el('div', 'ai-action-status', statusMessage));
+    const status = statusNode();
+    if (status) panel.appendChild(status);
     for (const server of servers) panel.appendChild(renderServer(server));
     panel.appendChild(renderLog());
   }

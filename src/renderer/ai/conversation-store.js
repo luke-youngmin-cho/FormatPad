@@ -90,6 +90,12 @@ async function webLoad(workspacePath, id) {
   return row?.conversation || null;
 }
 
+async function webDelete(workspacePath, id) {
+  const ws = workspaceKey(workspacePath);
+  await withStore('readwrite', store => store.delete(`${ws}:${id}`));
+  return true;
+}
+
 async function webSearch(workspacePath, query) {
   const q = String(query || '').toLowerCase();
   const ws = workspaceKey(workspacePath);
@@ -131,6 +137,14 @@ export function createConversationStore({ getWorkspacePath }) {
         if (!res?.error) return res.conversation;
       }
       return webSave(workspacePath, normalized);
+    },
+    async delete(id) {
+      const workspacePath = getWorkspacePath?.() || null;
+      if (hasDesktopStore && workspacePath) {
+        const res = await window.formatpad.aiConversations.delete(workspacePath, id);
+        if (!res?.error) return true;
+      }
+      return webDelete(workspacePath, id);
     },
     async search(query) {
       const workspacePath = getWorkspacePath?.() || null;

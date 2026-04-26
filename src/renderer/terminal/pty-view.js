@@ -362,6 +362,9 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   const sessions = [];
   let activeId = '';
   let shells = [];
+  let shellsPromise = null;
+  let shellProfilesLoading = false;
+  let terminalStarting = false;
   let removePtyListener = null;
   let restored = false;
   let draftText = '';
@@ -379,8 +382,8 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   }
 
   function setControlsEnabled(enabled) {
-    root.querySelectorAll('.terminal-shell-card, .terminal-empty-new').forEach(button => {
-      button.disabled = !enabled || button.dataset.available === 'false';
+    root.querySelectorAll('.terminal-shell-card, .terminal-empty-new, .terminal-tab-add').forEach(button => {
+      button.disabled = !enabled || terminalStarting || button.dataset.available === 'false';
     });
   }
 
@@ -473,7 +476,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     const add = el('button', 'terminal-tab terminal-tab-add', '+');
     add.type = 'button';
     add.title = 'Select shell profile (Ctrl+Shift+`)';
-    add.disabled = !available;
+    add.disabled = !available || terminalStarting;
     add.addEventListener('click', (event) => openNewTerminalPanel(event));
     tabStrip.appendChild(add);
     setControlsEnabled(available && ptyStatus.available !== false);
@@ -523,6 +526,14 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       return;
     }
 
+    if (shellProfilesLoading && !shells.length) {
+      const loading = el('div', 'terminal-shell-loading');
+      loading.append(el('span', 'ai-spinner'), el('span', '', 'Detecting shell profiles...'));
+      shellList.appendChild(loading);
+      positionNewTerminalPopover();
+      return;
+    }
+
     if (!shells.length) {
       const message = el('div', 'terminal-shell-empty');
       message.textContent = 'No shell profiles were detected on this system.';
@@ -537,6 +548,12 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       ? savedPreferred
       : firstAvailable;
 
+    if (terminalStarting) {
+      const loading = el('div', 'terminal-shell-loading');
+      loading.append(el('span', 'ai-spinner'), el('span', '', 'Starting terminal session...'));
+      shellList.appendChild(loading);
+    }
+
     const renderProfile = (shell) => {
       const isAvailable = shell.available !== false && Boolean(shell.command);
       const card = el('button', `terminal-shell-card ${shell.id === preferred ? 'preferred' : ''} ${shell.kind === 'ai-cli' ? 'ai-cli' : ''} ${isAvailable ? '' : 'unavailable'}`);
@@ -544,7 +561,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       card.dataset.profileId = shell.id || '';
       card.dataset.profileKind = shell.kind || 'shell';
       card.dataset.available = isAvailable ? 'true' : 'false';
-      card.disabled = !isAvailable || ptyStatus.available === false;
+      card.disabled = !isAvailable || ptyStatus.available === false || terminalStarting;
       card.title = shell.command || shell.label || 'Shell';
       card.appendChild(el('span', 'terminal-shell-icon', shellIcon(shell)));
       const copy = el('span', 'terminal-shell-copy');
@@ -555,9 +572,8 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       else if (shell.id === preferred) card.appendChild(el('span', 'terminal-shell-badge', 'Default'));
       else if (shell.kind === 'ai-cli') card.appendChild(el('span', 'terminal-shell-badge ai', 'AI CLI'));
       card.addEventListener('click', () => {
-        if (!isAvailable) return;
+        if (!isAvailable || terminalStarting) return;
         localStorage.setItem(LAST_SHELL_KEY, shell.id);
-        closeNewTerminalPanel({ focus: false });
         newTerminal({ shell: shell.id, cwd: newCwdInput.value.trim() || defaultCwd() });
       });
       shellList.appendChild(card);
@@ -578,6 +594,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     newPopoverOpen = true;
     newPopoverPoint = resolveNewPopoverPoint(trigger);
     pendingNewCwd = defaultCwd();
+    shellProfilesLoading = available && !shells.length;
     renderNewTerminalPanel();
     if (!available) {
       setStatus('desktop only');
@@ -673,12 +690,26 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
   async function ensureShells() {
     if (shells.length) return shells;
     if (!available) return [];
-    shells = await window.pty.shells().catch(err => {
-      setStatus(err.message || String(err));
-      return [];
-    });
-    renderNewTerminalPanel();
-    return shells;
+    if (!shellsPromise) {
+      shellProfilesLoading = true;
+      renderNewTerminalPanel();
+      shellsPromise = window.pty.shells()
+        .catch(err => {
+          setStatus(err.message || String(err));
+          return [];
+        })
+        .then(result => {
+          shells = result || [];
+          return shells;
+        })
+        .finally(() => {
+          shellProfilesLoading = false;
+          shellsPromise = null;
+          renderNewTerminalPanel();
+          renderTabs();
+        });
+    }
+    return shellsPromise;
   }
 
   function createTerminalSession(info) {
@@ -770,6 +801,9 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       const preferredAvailable = shells.find(item => item.id === savedPreferred && item.available !== false && item.command);
       const selectedShell = options.shell || preferredAvailable?.id || firstAvailable;
       setStatus('Starting shell...');
+      terminalStarting = true;
+      renderTabs();
+      renderNewTerminalPanel();
       const info = await window.pty.spawn({
         shell: selectedShell,
         cwd,
@@ -784,6 +818,10 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       setStatus(err.message || String(err));
       hooks.notify?.('Terminal', err);
       return null;
+    } finally {
+      terminalStarting = false;
+      renderTabs();
+      renderNewTerminalPanel();
     }
   }
 
@@ -893,7 +931,6 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       const preferred = shells.find(item => item.id === savedPreferred && item.available !== false && item.command)?.id
         || shells.find(item => item.available !== false && item.command)?.id;
       if (preferred) {
-        closeNewTerminalPanel({ focus: false });
         newTerminal({ shell: preferred, cwd: newCwdInput.value.trim() || defaultCwd() });
       }
     }

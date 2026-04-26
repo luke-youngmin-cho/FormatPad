@@ -3027,11 +3027,23 @@ body.drag-over::after {
 }
 .terminal-badge {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--hover-bg);
   color: var(--text-tertiary);
   font-size: 10px;
+}
+.terminal-badge.running::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border: 2px solid color-mix(in srgb, var(--accent-color) 22%, transparent);
+  border-top-color: var(--accent-color);
+  border-radius: 999px;
+  animation: ai-spin 0.8s linear infinite;
 }
 .terminal-badge.ok {
   color: var(--syntax-string);
@@ -3373,6 +3385,17 @@ body.drag-over::after {
   border: 1px dashed color-mix(in srgb, var(--border-color) 72%, transparent);
   border-radius: 9px;
   color: var(--text-tertiary);
+  font-size: 11px;
+}
+.terminal-shell-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  border: 1px dashed color-mix(in srgb, var(--accent-color) 36%, var(--border-color));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent-color) 7%, transparent);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .terminal-draft {
@@ -3791,17 +3814,48 @@ body.drag-over::after {
   padding: 0 8px 8px;
 }
 .ai-history-item {
+  position: relative;
+  margin-bottom: 6px;
+}
+.ai-history-open {
   width: 100%;
   display: grid;
   gap: 2px;
-  padding: 7px 6px;
-  margin-bottom: 6px;
+  padding: 7px 26px 7px 6px;
   text-align: left;
 }
-.ai-history-item.active {
+.ai-history-item.active .ai-history-open {
   color: var(--accent-color);
   border-color: color-mix(in srgb, var(--accent-color) 60%, var(--border-color));
   background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+}
+.ai-history-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  font-size: 12px;
+  line-height: 1;
+}
+.ai-history-item:hover .ai-history-delete,
+.ai-history-item:focus-within .ai-history-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ai-history-delete:hover {
+  color: var(--danger-color, #ff7676);
+  border-color: color-mix(in srgb, var(--danger-color, #ff7676) 58%, var(--border-color));
+  background: color-mix(in srgb, var(--danger-color, #ff7676) 11%, transparent);
+}
+.ai-history-item.loading .ai-history-open {
+  cursor: wait;
 }
 .ai-history-title {
   overflow: hidden;
@@ -3898,6 +3952,9 @@ body.drag-over::after {
   border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
   border-radius: 12px 12px 12px 4px;
   background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+}
+.ai-message-bubble.loading {
+  border-color: color-mix(in srgb, var(--accent-color) 42%, var(--border-color));
 }
 .ai-message.user .ai-message-bubble {
   border-color: color-mix(in srgb, var(--accent-color) 35%, var(--border-color));
@@ -4176,6 +4233,10 @@ body.drag-over::after {
   text-align: left;
   background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
 }
+.ai-mcp-tool:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
 .ai-mcp-tool strong {
   color: var(--text-primary);
   font-size: 12px;
@@ -4253,10 +4314,16 @@ body.drag-over::after {
   color: var(--accent-color);
 }
 .ai-action-running,
-.ai-action-status {
+.ai-action-status,
+.ai-loading-line,
+.ai-history-loading,
+.ai-history-row-loading {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.ai-action-running,
+.ai-action-status {
   margin-bottom: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border-color);
@@ -4264,6 +4331,18 @@ body.drag-over::after {
   background: var(--bg-primary);
   color: var(--text-secondary);
   font-size: 12px;
+}
+.ai-loading-line,
+.ai-history-loading,
+.ai-history-row-loading {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.ai-history-loading {
+  padding: 7px 6px;
+}
+.ai-history-row-loading {
+  padding: 4px 6px 0;
 }
 .ai-action-running button {
   margin-left: auto;

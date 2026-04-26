@@ -127,6 +127,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   let activeMode = 'chat';
   let sending = false;
   let historyQuery = '';
+  let historyLoadSeq = 0;
   let chatAbortController = null;
   let actionRunning = null;
   let actionRunSeq = 0;
@@ -436,6 +437,12 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     if (last < text.length || !text) container.appendChild(el('div', 'ai-message-text', text.slice(last)));
   }
 
+  function loadingLine(label, className = 'ai-loading-line') {
+    const node = el('div', className);
+    node.append(el('span', 'ai-spinner'), el('span', '', label));
+    return node;
+  }
+
   function renderMessages() {
     logEl.innerHTML = '';
     if (messages.length === 0) {
@@ -453,7 +460,13 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       const bubble = el('div', 'ai-message-bubble');
       bubble.appendChild(el('div', 'ai-message-role', msg.role === 'assistant' ? 'FormatPad AI' : 'You'));
       const content = el('div', 'ai-message-body');
-      renderMessageContent(content, msg);
+      const waitingForAssistant = msg.role === 'assistant' && !msg.content && sending;
+      if (waitingForAssistant) {
+        bubble.classList.add('loading');
+        content.appendChild(loadingLine('Waiting for AI response...'));
+      } else {
+        renderMessageContent(content, msg);
+      }
       bubble.appendChild(content);
       item.appendChild(bubble);
       logEl.appendChild(item);
@@ -508,38 +521,66 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   }
 
   async function loadHistory() {
+    const seq = ++historyLoadSeq;
+    historyList.innerHTML = '';
+    historyList.appendChild(loadingLine('Loading history...', 'ai-history-loading'));
     try {
       const items = historyQuery
         ? await conversationStore.search(historyQuery)
         : await conversationStore.list();
+      if (seq !== historyLoadSeq) return;
       historyList.innerHTML = '';
+      if (!items.length) {
+        historyList.appendChild(el('div', 'ai-history-empty', historyQuery ? 'No matching chats' : 'No saved chats yet'));
+        return;
+      }
       for (const item of items) {
-        const btn = el('button', 'ai-history-item');
+        const row = el('div', 'ai-history-item');
+        row.classList.toggle('active', item.id === currentConversation?.id);
+        const btn = el('button', 'ai-history-open');
         btn.type = 'button';
-        btn.classList.toggle('active', item.id === currentConversation?.id);
         const title = el('span', 'ai-history-title', item.title || 'New chat');
         const meta = el('span', 'ai-history-meta', `${item.messageCount || 0} messages`);
         btn.append(title, meta);
         btn.addEventListener('click', async () => {
-          const loaded = await conversationStore.load(item.id);
-          if (!loaded) return;
-          currentConversation = loaded;
-          messages = loaded.messages || [];
-          provider = getProvider(loaded.provider || provider.id);
-          model = loaded.model || getSavedModel(provider);
-          endpoint = getSavedEndpoint(provider);
-          renderHeader();
-          renderMessages();
-          loadHistory();
+          row.classList.add('loading');
+          const spinner = loadingLine('Opening...', 'ai-history-row-loading');
+          row.appendChild(spinner);
+          try {
+            const loaded = await conversationStore.load(item.id);
+            if (!loaded) return;
+            currentConversation = loaded;
+            messages = loaded.messages || [];
+            provider = getProvider(loaded.provider || provider.id);
+            model = loaded.model || getSavedModel(provider);
+            endpoint = getSavedEndpoint(provider);
+            renderHeader();
+            renderMessages();
+            loadHistory();
+          } finally {
+            spinner.remove();
+            row.classList.remove('loading');
+          }
         });
-        historyList.appendChild(btn);
+        const deleteBtn = el('button', 'ai-history-delete', 'x');
+        deleteBtn.type = 'button';
+        deleteBtn.title = 'Delete chat';
+        deleteBtn.setAttribute('aria-label', `Delete chat: ${item.title || 'New chat'}`);
+        deleteBtn.addEventListener('click', event => deleteHistoryItem(item, event));
+        row.append(btn, deleteBtn);
+        historyList.appendChild(row);
       }
     } catch {
+      if (seq !== historyLoadSeq) return;
       historyList.innerHTML = '<div class="ai-history-empty">History unavailable</div>';
     }
   }
 
   async function saveConversation() {
+    if (!messages.length) {
+      loadHistory();
+      return;
+    }
     if (!currentConversation) currentConversation = conversationStore.create();
     const firstUser = messages.find(msg => msg.role === 'user')?.content || 'New chat';
     currentConversation.title = currentConversation.title === 'New chat'
@@ -551,6 +592,25 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     currentConversation.updatedAt = nowIso();
     await conversationStore.save(currentConversation);
     loadHistory();
+  }
+
+  async function deleteHistoryItem(item, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const title = item.title || 'New chat';
+    if (typeof window.confirm === 'function' && !window.confirm(`Delete "${title}" from AI history?`)) return;
+    try {
+      if (item.id === currentConversation?.id && sending) cancelChatResponse();
+      await conversationStore.delete(item.id);
+      if (item.id === currentConversation?.id) {
+        messages = [];
+        currentConversation = conversationStore.create();
+        renderMessages();
+      }
+      await loadHistory();
+    } catch (err) {
+      hooks.notify?.('AI history', err);
+    }
   }
 
   function renameCurrentConversation() {
@@ -775,9 +835,9 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
 
     const assistantMsg = makeMessage('assistant', '');
     messages.push(assistantMsg);
-    renderMessages();
     const controller = new AbortController();
     setChatSending(true, controller);
+    renderMessages();
 
     try {
       const workspaceFiles = includeTree ? await hooks.getWorkspaceFiles?.() : [];
@@ -835,7 +895,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     } finally {
       setChatSending(false);
       renderMessages();
-      saveConversation();
+      await saveConversation().catch(err => hooks.notify?.('AI history', err));
     }
   }
 
