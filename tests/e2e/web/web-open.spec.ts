@@ -238,6 +238,35 @@ test('Assist tools distinguish local actions from AI-powered actions', async ({ 
   }
 });
 
+test('JSON sample generation cancel does not create an output tab', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(async () => {
+      await (window as any).formatpad.dropFile(new File(['{"type":"object","properties":{"name":{"type":"string"}}}'], 'schema.json', { type: 'application/json' }));
+    });
+
+    await page.locator('#btn-ai').click();
+    await page.locator('.ai-mode-tabs button[data-mode="actions"]').click();
+    await page.getByRole('button', { name: /Generate sample data/ }).click();
+    await expect(page.locator('#fmt-modal')).toContainText('Generate samples');
+    await page.locator('#fmt-modal-footer button', { hasText: 'Cancel' }).click();
+
+    await expect(page.locator('.ai-action-running')).toHaveCount(0);
+    await expect(page.locator('.ai-action-status')).toContainText('Canceled');
+    await expect(page.locator('.tab-item')).not.toContainText('sample-data.json');
+  } finally {
+    await close();
+  }
+});
+
 test('web PWA assets are self-contained for offline install', async () => {
   if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
     test.skip(true, 'docs/ not built - run npm run build:web:min first');

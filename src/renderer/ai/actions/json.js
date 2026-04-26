@@ -191,7 +191,9 @@ registerAction({
   requiresAI: false,
   description: 'Generate local sample data from the current JSON Schema.',
   async run({ context, ui }) {
-    const count = Math.max(1, Math.min(20, Number(await ui.promptText('Generate samples', 'Number of samples', '3')) || 3));
+    const countText = await ui.promptText('Generate samples', 'Number of samples', '3');
+    if (!countText) return { message: 'Canceled' };
+    const count = Math.max(1, Math.min(20, Number(countText) || 3));
     const schema = parseJson(context);
     const samples = Array.from({ length: count }, () => sampleFor(schema));
     ui.openTab({ name: 'sample-data.json', content: JSON.stringify(samples, null, 2), viewType: 'json' });
