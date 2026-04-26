@@ -10,6 +10,17 @@ function compactStderr(chunks) {
   return chunks.join('').slice(-4000);
 }
 
+function isMethodNotFound(err) {
+  let current = err;
+  while (current) {
+    if (current.code === -32601) return true;
+    const message = String(current.message || '');
+    if (message.includes('-32601') || message.toLowerCase().includes('method not found')) return true;
+    current = current.cause;
+  }
+  return false;
+}
+
 class McpClientPool {
   constructor({ registry }) {
     this.registry = registry;
@@ -26,6 +37,7 @@ class McpClientPool {
       pid: entry.transport?.pid || null,
       toolCount: entry.tools?.length || 0,
       resourceCount: entry.resources?.length || 0,
+      resourcesUnsupported: entry.resourcesUnsupported === true,
       startedAt: entry.startedAt || null,
     };
   }
@@ -46,6 +58,7 @@ class McpClientPool {
       stderr: [],
       tools: [],
       resources: [],
+      resourcesUnsupported: false,
       startedAt: new Date().toISOString(),
     };
     this.entries.set(server.id, entry);
@@ -122,8 +135,10 @@ class McpClientPool {
     try {
       const resourceResult = await entry.client.listResources();
       entry.resources = resourceResult?.resources || [];
-    } catch {
+      entry.resourcesUnsupported = false;
+    } catch (err) {
       entry.resources = [];
+      entry.resourcesUnsupported = isMethodNotFound(err);
     }
     return this.statusFor(id);
   }
@@ -137,14 +152,29 @@ class McpClientPool {
 
   async listResources(id) {
     const entry = this.requireRunning(id);
-    const result = await entry.client.listResources();
-    entry.resources = result?.resources || [];
+    try {
+      const result = await entry.client.listResources();
+      entry.resources = result?.resources || [];
+      entry.resourcesUnsupported = false;
+    } catch (err) {
+      entry.resources = [];
+      if (!isMethodNotFound(err)) throw err;
+      entry.resourcesUnsupported = true;
+    }
     return entry.resources;
   }
 
   async readResource(id, uri) {
     const entry = this.requireRunning(id);
-    return entry.client.readResource({ uri });
+    try {
+      return await entry.client.readResource({ uri });
+    } catch (err) {
+      if (isMethodNotFound(err)) {
+        entry.resourcesUnsupported = true;
+        throw new Error(`${entry.server.label || id} does not expose MCP resources.`);
+      }
+      throw err;
+    }
   }
 
   async callTool(id, name, args) {

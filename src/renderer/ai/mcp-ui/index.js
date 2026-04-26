@@ -251,6 +251,14 @@ export function createMcpController({ panel, hooks, track }) {
     render();
   }
 
+  function showResourcesUnsupported(server) {
+    statusMessage = `${server.label} does not expose MCP resources. Use Tools for this server instead.`;
+    resourceCache.set(server.id, []);
+    selectedServerId = server.id;
+    selectedPanel = 'resources';
+    render();
+  }
+
   function renderListRow(title, subtitle, onClick) {
     const row = el('button', 'ai-mcp-tool');
     row.type = 'button';
@@ -406,6 +414,7 @@ export function createMcpController({ panel, hooks, track }) {
     const statusParts = [status.state];
     if (status.toolCount) statusParts.push(`${status.toolCount} tools`);
     if (status.resourceCount) statusParts.push(`${status.resourceCount} resources`);
+    if (status.resourcesUnsupported) statusParts.push('no resources API');
     title.appendChild(el('span', '', statusParts.join(' / ')));
     const enable = document.createElement('input');
     enable.type = 'checkbox';
@@ -450,10 +459,18 @@ export function createMcpController({ panel, hooks, track }) {
     const resources = el('button', '', 'Resources');
     resources.type = 'button';
     resources.disabled = busy;
-    resources.title = status.state === 'running' ? 'List resources exposed by this MCP server.' : 'Enable this server before listing resources.';
+    resources.title = status.resourcesUnsupported
+      ? 'This server does not expose MCP resources.'
+      : status.state === 'running'
+        ? 'List resources exposed by this MCP server.'
+        : 'Enable this server before listing resources.';
     resources.addEventListener('click', async () => {
       if (status.state !== 'running') {
         showServerUnavailable(server, status, 'resources');
+        return;
+      }
+      if (status.resourcesUnsupported) {
+        showResourcesUnsupported(server);
         return;
       }
       selectedServerId = server.id;
@@ -462,9 +479,15 @@ export function createMcpController({ panel, hooks, track }) {
       render();
       try {
         const items = await ensureResources(server.id);
-        statusMessage = items.length
-          ? `${server.label}: ${items.length} MCP resources available.`
-          : `${server.label}: no resources reported. Use Open URI if you know a resource URI.`;
+        await refresh();
+        if (statuses[server.id]?.resourcesUnsupported) {
+          resourceCache.set(server.id, []);
+          statusMessage = `${server.label} does not expose MCP resources. Use Tools for this server instead.`;
+        } else {
+          statusMessage = items.length
+            ? `${server.label}: ${items.length} MCP resources available.`
+            : `${server.label}: no resources reported. Use Open URI if you know a resource URI.`;
+        }
       } catch (err) {
         resourceCache.delete(server.id);
         statusMessage = `${server.label}: failed to list resources - ${err.message || String(err)}`;
@@ -475,10 +498,16 @@ export function createMcpController({ panel, hooks, track }) {
     const openUri = el('button', '', 'Open URI');
     openUri.type = 'button';
     openUri.disabled = busy;
-    openUri.title = status.state === 'running' ? 'Open a resource by URI.' : 'Enable this server before opening resources.';
+    openUri.title = status.resourcesUnsupported
+      ? 'This server does not expose MCP resources.'
+      : status.state === 'running' ? 'Open a resource by URI.' : 'Enable this server before opening resources.';
     openUri.addEventListener('click', () => {
       if (status.state !== 'running') {
         showServerUnavailable(server, status, 'resources');
+        return;
+      }
+      if (status.resourcesUnsupported) {
+        showResourcesUnsupported(server);
         return;
       }
       openResourcePrompt(server);
