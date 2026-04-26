@@ -9,7 +9,6 @@ const DEFAULT_COLS = 100;
 const DEFAULT_ROWS = 28;
 let ptyModule = null;
 let ptyLoadError = null;
-let cachedPathDirs = null;
 
 function loadPtyModule() {
   if (ptyModule) return ptyModule;
@@ -82,7 +81,6 @@ function commonWindowsPathDirs() {
 }
 
 function pathDirs() {
-  if (cachedPathDirs) return cachedPathDirs;
   const values = [process.env.PATH || process.env.Path || ''];
   if (process.platform === 'win32') {
     values.push(
@@ -92,7 +90,7 @@ function pathDirs() {
     );
   }
   const seen = new Set();
-  cachedPathDirs = values
+  return values
     .flatMap(value => expandWindowsEnv(value).split(path.delimiter))
     .map(item => item.trim().replace(/^"|"$/g, ''))
     .filter(Boolean)
@@ -102,7 +100,6 @@ function pathDirs() {
       seen.add(key);
       return true;
     });
-  return cachedPathDirs;
 }
 
 function findOnPath(name) {
@@ -442,20 +439,15 @@ function writeZshRc(appDataPath) {
   return dir;
 }
 
-function quoteCmdArg(value) {
-  return `"${String(value || '').replace(/"/g, '""')}"`;
-}
-
 function buildSpawnArgs(shell, env, appDataPath) {
   const scripts = shellIntegrationDir();
   if (shell.family === 'ai-cli') {
     const args = Array.isArray(shell.args) ? shell.args.map(String) : [];
     if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(shell.command || '')) {
-      const commandLine = [quoteCmdArg(shell.command), ...args.map(quoteCmdArg)].join(' ');
       return {
         command: process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe'),
-        // Match UTerminal's CreateProcess wrapper: .cmd/.bat shims need cmd /S /C with an outer quoted command line.
-        args: ['/D', '/S', '/C', `"${commandLine}"`],
+        // node-pty/libuv quotes args for us; use call so .cmd/.bat shims work with paths containing spaces.
+        args: ['/D', '/K', 'call', shell.command, ...args],
         env,
       };
     }
