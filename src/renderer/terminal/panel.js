@@ -444,7 +444,7 @@ export function createTerminalPanel({ hooks, track }) {
       event.preventDefault();
       toggle(true);
       setMode('terminal');
-      ensurePtyGroup().newTerminal();
+      ensurePtyGroup().openNewTerminalPanel?.();
       return;
     }
     if ((event.ctrlKey || event.metaKey) && isBackquote) {

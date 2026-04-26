@@ -42,6 +42,8 @@ test('desktop app launches, window title contains FormatPad', async () => {
   await expect(win.locator('.terminal-new-popover')).toBeVisible();
   await expect(win.locator('.terminal-new-popover')).toHaveCSS('position', 'fixed');
   await expect(win.locator('.terminal-new-popover')).toContainText('Choose a shell profile');
+  await expect(win.locator('.terminal-new-popover')).toContainText('AI CLI apps');
+  await expect(win.locator('.terminal-shell-card[data-profile-kind="ai-cli"]')).toHaveCount(3);
   const shellCardCount = await win.locator('.terminal-shell-card').count();
   const shellEmptyCount = await win.locator('.terminal-shell-empty').count();
   expect(shellCardCount + shellEmptyCount).toBeGreaterThan(0);

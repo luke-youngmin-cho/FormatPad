@@ -3280,6 +3280,17 @@ body.drag-over::after {
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
+.terminal-profile-section-title {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.terminal-profile-section-title + .terminal-shell-card {
+  margin-top: -2px;
+}
 .terminal-shell-card {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
@@ -3298,6 +3309,16 @@ body.drag-over::after {
   border-color: color-mix(in srgb, var(--accent-color) 48%, var(--border-color));
   background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-primary));
   color: var(--text-primary);
+}
+.terminal-shell-card.ai-cli {
+  border-color: color-mix(in srgb, var(--accent-color) 28%, var(--border-color));
+}
+.terminal-shell-card.ai-cli .terminal-shell-icon {
+  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+}
+.terminal-shell-card.unavailable {
+  border-style: dashed;
+  opacity: 0.72;
 }
 .terminal-shell-card:disabled {
   opacity: 0.55;
@@ -3339,6 +3360,13 @@ body.drag-over::after {
   background: color-mix(in srgb, var(--accent-color) 13%, transparent);
   color: var(--accent-color);
   font-size: 10px;
+}
+.terminal-shell-badge.ai {
+  background: color-mix(in srgb, var(--accent-color) 11%, transparent);
+}
+.terminal-shell-badge.missing {
+  background: color-mix(in srgb, var(--warning-color, #d97706) 13%, transparent);
+  color: color-mix(in srgb, var(--warning-color, #d97706) 90%, var(--text-primary));
 }
 .terminal-shell-empty {
   padding: 9px;

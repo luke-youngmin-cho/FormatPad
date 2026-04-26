@@ -73,6 +73,83 @@ function gitBashPath() {
   ]);
 }
 
+const AI_CLI_PROFILES = [
+  {
+    id: 'ai-claude',
+    label: 'Claude Code',
+    commandName: 'claude',
+    description: 'Launch the Claude Code TUI in this workspace.',
+    installHint: 'Install Claude Code and ensure `claude` is on PATH.',
+  },
+  {
+    id: 'ai-codex',
+    label: 'Codex CLI',
+    commandName: 'codex',
+    description: 'Launch the OpenAI Codex CLI TUI in this workspace.',
+    installHint: 'Install Codex CLI and ensure `codex` is on PATH.',
+  },
+  {
+    id: 'ai-gemini',
+    label: 'Gemini CLI',
+    commandName: 'gemini',
+    description: 'Launch the Gemini CLI TUI in this workspace.',
+    installHint: 'Install Gemini CLI and ensure `gemini` is on PATH.',
+  },
+];
+
+function aiCliCandidates(commandName) {
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+  const candidates = [findOnPath(commandName)];
+
+  if (process.platform === 'win32') {
+    if (commandName === 'claude') {
+      candidates.push(
+        path.join(home, '.claude', 'local', 'bin', 'claude.exe'),
+        path.join(home, '.claude', 'bin', 'claude.exe'),
+        path.join(home, '.local', 'bin', 'claude.exe'),
+        path.join(localAppData, 'Programs', 'ClaudeCode', 'claude.exe'),
+      );
+    }
+    candidates.push(
+      path.join(appData, 'npm', `${commandName}.cmd`),
+      path.join(localAppData, 'Microsoft', 'WinGet', 'Links', `${commandName}.exe`),
+      path.join(localAppData, 'Volta', 'bin', `${commandName}.exe`),
+      path.join(home, 'scoop', 'shims', `${commandName}.exe`),
+    );
+    return candidates;
+  }
+
+  if (commandName === 'claude') {
+    candidates.push(
+      path.join(home, '.claude', 'local', 'bin', 'claude'),
+      path.join(home, '.claude', 'bin', 'claude'),
+    );
+  }
+  candidates.push(
+    path.join(home, '.local', 'bin', commandName),
+    `/usr/local/bin/${commandName}`,
+    `/opt/homebrew/bin/${commandName}`,
+    `/snap/bin/${commandName}`,
+  );
+  return candidates;
+}
+
+function detectAiCliProfiles() {
+  return AI_CLI_PROFILES.map(profile => {
+    const command = existing(aiCliCandidates(profile.commandName));
+    return {
+      ...profile,
+      kind: 'ai-cli',
+      family: 'ai-cli',
+      command: command || null,
+      args: [],
+      available: Boolean(command),
+    };
+  });
+}
+
 function detectShells() {
   if (process.platform === 'win32') {
     const systemRoot = process.env.SystemRoot || 'C:\\Windows';
@@ -129,6 +206,18 @@ function detectShells() {
   ].filter(item => item.command && fs.existsSync(item.command));
 }
 
+function detectTerminalProfiles() {
+  return [
+    ...detectShells().map(item => ({
+      ...item,
+      kind: 'shell',
+      available: true,
+      description: `${item.family || 'terminal'} shell`,
+    })),
+    ...detectAiCliProfiles(),
+  ];
+}
+
 function shellIntegrationDir() {
   return path.resolve(__dirname, '..', '..', 'renderer', 'terminal', 'shell-integration');
 }
@@ -147,11 +236,16 @@ function normalizeCwd(input, workspaceRoot, allowOutsideWorkspace) {
 }
 
 function shellByRequest(requested) {
-  const shells = detectShells();
+  const profiles = detectTerminalProfiles();
   if (requested) {
     const lower = String(requested).toLowerCase();
-    const byId = shells.find(item => item.id === lower || item.label.toLowerCase() === lower);
-    if (byId) return byId;
+    const byId = profiles.find(item => item.id === lower || item.label.toLowerCase() === lower);
+    if (byId) {
+      if (!byId.command || byId.available === false) {
+        throw new Error(`${byId.label} is not installed. ${byId.installHint || 'Install it and ensure the command is on PATH.'}`);
+      }
+      return byId;
+    }
     const explicit = path.resolve(String(requested));
     if (fs.existsSync(explicit)) {
       const base = path.basename(explicit).toLowerCase();
@@ -161,6 +255,7 @@ function shellByRequest(requested) {
       return { id: 'custom', label: path.basename(explicit), family, command: explicit };
     }
   }
+  const shells = profiles.filter(item => item.kind === 'shell' && item.command && item.available !== false);
   if (!shells.length) throw new Error('No supported shell was found on this system.');
   return shells[0];
 }
@@ -173,8 +268,23 @@ function writeZshRc(appDataPath) {
   return dir;
 }
 
+function quoteCmdArg(value) {
+  return `"${String(value || '').replace(/"/g, '""')}"`;
+}
+
 function buildSpawnArgs(shell, env, appDataPath) {
   const scripts = shellIntegrationDir();
+  if (shell.family === 'ai-cli') {
+    const args = Array.isArray(shell.args) ? shell.args.map(String) : [];
+    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(shell.command || '')) {
+      return {
+        command: process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe'),
+        args: ['/D', '/K', [quoteCmdArg(shell.command), ...args.map(quoteCmdArg)].join(' ')],
+        env,
+      };
+    }
+    return { args, env };
+  }
   if (shell.family === 'powershell') {
     return {
       args: ['-NoLogo', '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, 'powershell.ps1')],
@@ -274,7 +384,7 @@ function createPtyManager({ app }) {
     const rows = Math.max(5, Math.min(200, Number(input.rows) || DEFAULT_ROWS));
     const id = crypto.randomUUID();
 
-    const proc = loadPtyModule().spawn(shell.command, spawnSpec.args, {
+    const proc = loadPtyModule().spawn(spawnSpec.command || shell.command, spawnSpec.args, {
       name: 'xterm-256color',
       cwd,
       env: spawnSpec.env,
@@ -309,7 +419,15 @@ function createPtyManager({ app }) {
     persistRestoreEntries().catch(() => {});
     return {
       sessionId: id,
-      shell: { id: shell.id, label: shell.label, command: shell.command, family: shell.family },
+      shell: {
+        id: shell.id,
+        label: shell.label,
+        command: shell.command,
+        family: shell.family,
+        kind: shell.kind || 'shell',
+        commandName: shell.commandName || '',
+        description: shell.description || '',
+      },
       cwd,
       cols,
       rows,
@@ -365,6 +483,7 @@ function createPtyManager({ app }) {
   return {
     availability: ptyAvailability,
     detectShells,
+    detectTerminalProfiles,
     spawnPty,
     write,
     resize,
@@ -379,6 +498,7 @@ function createPtyManager({ app }) {
 module.exports = {
   createPtyManager,
   detectShells,
+  detectTerminalProfiles,
   shellByRequest,
   ptyAvailability,
 };

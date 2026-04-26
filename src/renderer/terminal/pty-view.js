@@ -51,6 +51,9 @@ function fileName(value) {
 
 function shellIcon(shell = {}) {
   const id = String(shell.id || shell.family || '').toLowerCase();
+  if (id.includes('claude')) return 'CL';
+  if (id.includes('codex')) return 'CX';
+  if (id.includes('gemini')) return 'GM';
   if (id.includes('powershell')) return 'PS';
   if (id.includes('cmd')) return 'CMD';
   if (id.includes('git')) return 'Git';
@@ -61,6 +64,8 @@ function shellIcon(shell = {}) {
 }
 
 function shellDescription(shell = {}) {
+  if (shell.available === false) return shell.installHint || 'Install this CLI and ensure it is on PATH.';
+  if (shell.description) return shell.description;
   const command = shell.command || '';
   const family = shell.family ? `${shell.family} shell` : 'terminal shell';
   return command ? `${family} - ${command}` : family;
@@ -375,7 +380,7 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
 
   function setControlsEnabled(enabled) {
     root.querySelectorAll('.terminal-shell-card, .terminal-empty-new').forEach(button => {
-      button.disabled = !enabled;
+      button.disabled = !enabled || button.dataset.available === 'false';
     });
   }
 
@@ -526,24 +531,46 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
       return;
     }
 
-    const preferred = localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id || '';
-    for (const shell of shells) {
-      const card = el('button', `terminal-shell-card ${shell.id === preferred ? 'preferred' : ''}`);
+    const firstAvailable = shells.find(item => item.available !== false && item.command)?.id || '';
+    const savedPreferred = localStorage.getItem(LAST_SHELL_KEY) || '';
+    const preferred = shells.some(item => item.id === savedPreferred && item.available !== false && item.command)
+      ? savedPreferred
+      : firstAvailable;
+
+    const renderProfile = (shell) => {
+      const isAvailable = shell.available !== false && Boolean(shell.command);
+      const card = el('button', `terminal-shell-card ${shell.id === preferred ? 'preferred' : ''} ${shell.kind === 'ai-cli' ? 'ai-cli' : ''} ${isAvailable ? '' : 'unavailable'}`);
       card.type = 'button';
+      card.dataset.profileId = shell.id || '';
+      card.dataset.profileKind = shell.kind || 'shell';
+      card.dataset.available = isAvailable ? 'true' : 'false';
+      card.disabled = !isAvailable || ptyStatus.available === false;
       card.title = shell.command || shell.label || 'Shell';
       card.appendChild(el('span', 'terminal-shell-icon', shellIcon(shell)));
       const copy = el('span', 'terminal-shell-copy');
       copy.appendChild(el('strong', '', shell.label || shell.id || 'Shell'));
       copy.appendChild(el('small', '', shellDescription(shell)));
       card.appendChild(copy);
-      if (shell.id === preferred) card.appendChild(el('span', 'terminal-shell-badge', 'Default'));
+      if (!isAvailable) card.appendChild(el('span', 'terminal-shell-badge missing', 'Not found'));
+      else if (shell.id === preferred) card.appendChild(el('span', 'terminal-shell-badge', 'Default'));
+      else if (shell.kind === 'ai-cli') card.appendChild(el('span', 'terminal-shell-badge ai', 'AI CLI'));
       card.addEventListener('click', () => {
+        if (!isAvailable) return;
         localStorage.setItem(LAST_SHELL_KEY, shell.id);
         closeNewTerminalPanel({ focus: false });
         newTerminal({ shell: shell.id, cwd: newCwdInput.value.trim() || defaultCwd() });
       });
       shellList.appendChild(card);
-    }
+    };
+
+    const appendSection = (title, profiles) => {
+      if (!profiles.length) return;
+      shellList.appendChild(el('div', 'terminal-profile-section-title', title));
+      profiles.forEach(renderProfile);
+    };
+
+    appendSection('Shells', shells.filter(item => item.kind !== 'ai-cli'));
+    appendSection('AI CLI apps', shells.filter(item => item.kind === 'ai-cli'));
     positionNewTerminalPopover();
   }
 
@@ -738,7 +765,10 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
           return null;
         }
       }
-      const selectedShell = options.shell || localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id || '';
+      const firstAvailable = shells.find(item => item.available !== false && item.command)?.id || '';
+      const savedPreferred = localStorage.getItem(LAST_SHELL_KEY) || '';
+      const preferredAvailable = shells.find(item => item.id === savedPreferred && item.available !== false && item.command);
+      const selectedShell = options.shell || preferredAvailable?.id || firstAvailable;
       setStatus('Starting shell...');
       const info = await window.pty.spawn({
         shell: selectedShell,
@@ -859,7 +889,9 @@ export function createPtyTerminalGroup({ mount, hooks, track }) {
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      const preferred = localStorage.getItem(LAST_SHELL_KEY) || shells[0]?.id;
+      const savedPreferred = localStorage.getItem(LAST_SHELL_KEY) || '';
+      const preferred = shells.find(item => item.id === savedPreferred && item.available !== false && item.command)?.id
+        || shells.find(item => item.available !== false && item.command)?.id;
       if (preferred) {
         closeNewTerminalPanel({ focus: false });
         newTerminal({ shell: preferred, cwd: newCwdInput.value.trim() || defaultCwd() });

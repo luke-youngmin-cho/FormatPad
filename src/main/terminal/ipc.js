@@ -117,11 +117,16 @@ function registerTerminalHandlers({ ipcMain, app, authority }) {
   });
 
   ipcMain.handle('terminal.pty.shells', async () => {
-    return ptyManager.detectShells().map(item => ({
+    return ptyManager.detectTerminalProfiles().map(item => ({
       id: item.id,
       label: item.label,
       family: item.family,
+      kind: item.kind || 'shell',
       command: item.command,
+      commandName: item.commandName || '',
+      description: item.description || '',
+      installHint: item.installHint || '',
+      available: item.available !== false && Boolean(item.command),
     }));
   });
 
