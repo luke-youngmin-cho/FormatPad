@@ -3623,7 +3623,8 @@ body.drag-over::after {
 .ai-history-head input,
 .ai-composer,
 .ai-settings-row input,
-.ai-settings-row select {
+.ai-settings-row select,
+.ai-settings-row textarea {
   width: 100%;
   border: 1px solid var(--border-color);
   border-radius: 7px;
@@ -3915,6 +3916,9 @@ body.drag-over::after {
 .ai-mcp-tool-list {
   display: grid;
   gap: 6px;
+  max-height: min(340px, 42vh);
+  overflow: auto;
+  padding-right: 2px;
 }
 .ai-mcp-tool {
   width: 100%;
@@ -3933,10 +3937,30 @@ body.drag-over::after {
   font-size: 10px;
   line-height: 1.4;
 }
+.ai-mcp-tool-meta {
+  color: var(--accent-color);
+  font-size: 10px;
+  font-weight: 600;
+}
+.ai-mcp-arg-help {
+  display: grid;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.ai-mcp-arg-help p {
+  margin: 0 0 2px;
+  color: var(--text-primary);
+}
+.ai-mcp-arg-help span {
+  color: var(--text-tertiary);
+}
 .ai-mcp-error,
 .ai-mcp-stderr,
 .ai-mcp-log pre,
-.ai-mcp-permission pre {
+.ai-mcp-permission pre,
+.ai-mcp-schema pre {
   max-height: 180px;
   overflow: auto;
   padding: 8px;
@@ -3961,6 +3985,11 @@ body.drag-over::after {
   font-size: 12px;
 }
 .ai-mcp-log summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.ai-mcp-schema summary {
   cursor: pointer;
   color: var(--text-secondary);
   font-size: 11px;
@@ -4036,7 +4065,8 @@ body.drag-over::after {
   font-size: 12px;
 }
 .ai-settings-row input,
-.ai-settings-row select { padding: 8px 9px; }
+.ai-settings-row select,
+.ai-settings-row textarea { padding: 8px 9px; }
 .ai-key-status { color: var(--text-tertiary); font-size: 12px; }
 .ai-diff-modal { display: grid; gap: 12px; min-width: min(900px, 78vw); }
 .ai-diff-modal p { color: var(--text-secondary); font-size: 12px; }

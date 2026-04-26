@@ -34,6 +34,55 @@ async function installHangingAiMock(page: Page): Promise<void> {
   });
 }
 
+async function installMcpMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const server = {
+      id: 'mock',
+      label: 'Mock MCP',
+      enabled: true,
+      command: 'mock',
+      args: [],
+      env: {},
+      description: 'Mock MCP server for UI tests.',
+      readOnlyDefault: true,
+    };
+    const tool = {
+      name: 'read_file',
+      description: 'Read a workspace file.',
+      inputSchema: {
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string', description: 'Workspace-relative file path.' },
+          limit: { type: 'integer', description: 'Maximum bytes to read.' },
+          includeHidden: { type: 'boolean', description: 'Include hidden files.' },
+        },
+      },
+    };
+    (window as any).mcp = {
+      listServers: async () => ({
+        servers: [server],
+        statuses: { mock: { state: 'running', toolCount: 1, resourceCount: 0 } },
+      }),
+      setEnabled: async () => ({
+        server,
+        statuses: { mock: { state: 'running', toolCount: 1, resourceCount: 0 } },
+      }),
+      listTools: async () => [tool],
+      listResources: async () => [],
+      readResource: async () => ({ contents: [] }),
+      prepareToolCall: async () => ({ readOnly: true, canPersistGlobal: true }),
+      callTool: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+      upsertServer: async () => server,
+      removeServer: async () => [server],
+      refreshServer: async () => ({ state: 'running', toolCount: 1, resourceCount: 0 }),
+      revokeGlobalPermission: async () => true,
+      exportConfig: async () => ({ version: 1, servers: [server] }),
+      importConfig: async () => [server],
+    };
+  });
+}
+
 test('web build loads, new-file works, no console errors', async ({ page }) => {
   if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
     test.skip(true, 'docs/ not built — run npm run build:web:min first');
@@ -88,6 +137,41 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
   expect(realErrors).toHaveLength(0);
 
   await close();
+});
+
+test('MCP tool lists are collapsible and explain argument schemas', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installMcpMock(page);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('#btn-ai').click();
+    await page.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
+
+    const card = page.locator('.ai-mcp-card').filter({ hasText: 'Mock MCP' });
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Tools' }).click();
+    await expect(card.getByRole('button', { name: 'Hide tools' })).toBeVisible();
+    await expect(card.getByRole('button', { name: /read_file/ })).toContainText('required path');
+
+    await card.getByRole('button', { name: 'Hide tools' }).click();
+    await expect(card.getByRole('button', { name: /read_file/ })).toHaveCount(0);
+
+    await card.getByRole('button', { name: 'Tools' }).click();
+    await card.getByRole('button', { name: /read_file/ }).click();
+    await expect(page.locator('#fmt-modal')).toContainText('Required: path');
+    await expect(page.locator('#fmt-modal')).toContainText('Workspace-relative file path.');
+    await expect(page.locator('#fmt-modal')).toContainText('Input schema');
+    await expect(page.locator('#fmt-modal textarea')).toHaveValue(/"path": "<path>"/);
+  } finally {
+    await close();
+  }
 });
 
 test('web PWA assets are self-contained for offline install', async () => {

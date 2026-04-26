@@ -71,6 +71,66 @@ function shortJson(value, max = 5000) {
   return text.length > max ? `${text.slice(0, max)}\n...` : text;
 }
 
+function schemaTypes(schema = {}) {
+  const type = schema?.type;
+  if (Array.isArray(type)) return type.map(String);
+  if (typeof type === 'string') return [type];
+  if (Array.isArray(schema?.enum)) return ['enum'];
+  if (Object.prototype.hasOwnProperty.call(schema || {}, 'const')) return ['const'];
+  return [];
+}
+
+function schemaTypeLabel(schema = {}) {
+  const types = schemaTypes(schema);
+  return types.length ? types.join(' | ') : 'any';
+}
+
+function sampleValueForSchema(schema = {}, name = 'value') {
+  if (Object.prototype.hasOwnProperty.call(schema || {}, 'default')) return schema.default;
+  if (Object.prototype.hasOwnProperty.call(schema || {}, 'const')) return schema.const;
+  if (Array.isArray(schema?.enum) && schema.enum.length) return schema.enum[0];
+  const [type] = schemaTypes(schema);
+  if (type === 'string') return `<${name}>`;
+  if (type === 'integer' || type === 'number') return 0;
+  if (type === 'boolean') return false;
+  if (type === 'array') return schema.items ? [sampleValueForSchema(schema.items, name)] : [];
+  if (type === 'object') return sampleArgsFromSchema(schema);
+  return `<${name}>`;
+}
+
+function sampleArgsFromSchema(schema = {}) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return {};
+  const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+  const names = Object.keys(properties);
+  const sample = {};
+  for (const name of names) sample[name] = sampleValueForSchema(properties[name], name);
+  return sample;
+}
+
+function describeToolSchema(tool) {
+  const schema = tool?.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {};
+  const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+  const required = new Set(Array.isArray(schema.required) ? schema.required.map(String) : []);
+  const rows = Object.entries(properties).map(([name, prop]) => {
+    const description = typeof prop?.description === 'string' ? ` - ${prop.description}` : '';
+    return `${name} (${schemaTypeLabel(prop)}${required.has(name) ? ', required' : ''})${description}`;
+  });
+  if (!rows.length) return ['No arguments required. Leave {} and run.'];
+  const requiredList = Array.from(required).filter(name => properties[name]);
+  const head = requiredList.length ? `Required: ${requiredList.join(', ')}` : 'No required arguments.';
+  return [head, ...rows.slice(0, 8), rows.length > 8 ? `...and ${rows.length - 8} more fields.` : ''].filter(Boolean);
+}
+
+function toolMeta(tool) {
+  const schema = tool?.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {};
+  const properties = schema.properties && typeof schema.properties === 'object' ? Object.keys(schema.properties) : [];
+  const required = Array.isArray(schema.required) ? schema.required.map(String) : [];
+  if (!properties.length) return 'No args required';
+  return required.length
+    ? `Args: ${properties.length} fields, required ${required.join(', ')}`
+    : `Args: ${properties.length} optional fields`;
+}
+
 export function createMcpController({ panel, hooks, track }) {
   const available = typeof window !== 'undefined' && !!window.mcp;
   let servers = [];
@@ -277,10 +337,11 @@ export function createMcpController({ panel, hooks, track }) {
     render();
   }
 
-  function renderListRow(title, subtitle, onClick) {
+  function renderListRow(title, subtitle, onClick, meta = '') {
     const row = el('button', 'ai-mcp-tool');
     row.type = 'button';
     row.append(el('strong', '', title), el('span', '', subtitle || 'No description'));
+    if (meta) row.appendChild(el('small', 'ai-mcp-tool-meta', meta));
     row.addEventListener('click', onClick);
     return row;
   }
@@ -392,13 +453,27 @@ export function createMcpController({ panel, hooks, track }) {
   }
 
   async function runToolPrompt(server, tool) {
+    const schema = tool.inputSchema && typeof tool.inputSchema === 'object'
+      ? tool.inputSchema
+      : { type: 'object', properties: {} };
     const body = el('div', 'ai-settings');
+    const help = el('div', 'ai-mcp-arg-help');
+    help.appendChild(el('p', '', 'Arguments are sent as JSON to the MCP server after the permission prompt.'));
+    for (const line of describeToolSchema(tool)) help.appendChild(el('span', '', line));
+    body.appendChild(help);
     const input = document.createElement('textarea');
-    input.rows = 8;
-    input.value = JSON.stringify({}, null, 2);
+    input.rows = 10;
+    input.value = JSON.stringify(sampleArgsFromSchema(schema), null, 2);
     const row = el('label', 'ai-settings-row');
     row.append(el('span', '', 'Arguments JSON'), input);
     body.appendChild(row);
+    const details = document.createElement('details');
+    details.className = 'ai-mcp-schema';
+    details.appendChild(el('summary', '', 'Input schema'));
+    const pre = document.createElement('pre');
+    pre.textContent = shortJson(schema, 3500);
+    details.appendChild(pre);
+    body.appendChild(details);
     hooks.openModal?.({
       title: `Run ${tool.name}`,
       body,
@@ -453,13 +528,21 @@ export function createMcpController({ panel, hooks, track }) {
     const edit = el('button', '', 'Edit');
     edit.type = 'button';
     edit.addEventListener('click', () => editServer(server));
-    const tools = el('button', '', 'Tools');
+    const toolsOpen = selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id);
+    const resourcesOpen = selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id);
+    const tools = el('button', '', toolsOpen ? 'Hide tools' : 'Tools');
     tools.type = 'button';
     tools.disabled = busy;
     tools.title = status.state === 'running' ? 'List tools exposed by this MCP server.' : 'Enable this server before listing tools.';
     tools.addEventListener('click', async () => {
       if (status.state !== 'running') {
         showServerUnavailable(server, status, 'tools');
+        return;
+      }
+      if (toolsOpen) {
+        selectedServerId = '';
+        statusMessage = `${server.label}: tools hidden.`;
+        render();
         return;
       }
       selectedServerId = server.id;
@@ -478,7 +561,7 @@ export function createMcpController({ panel, hooks, track }) {
       }
       render();
     });
-    const resources = el('button', '', 'Resources');
+    const resources = el('button', '', resourcesOpen ? 'Hide resources' : 'Resources');
     resources.type = 'button';
     resources.disabled = busy;
     resources.title = status.resourcesUnsupported
@@ -493,6 +576,12 @@ export function createMcpController({ panel, hooks, track }) {
       }
       if (status.resourcesUnsupported) {
         showResourcesUnsupported(server);
+        return;
+      }
+      if (resourcesOpen) {
+        selectedServerId = '';
+        statusMessage = `${server.label}: resources hidden.`;
+        render();
         return;
       }
       selectedServerId = server.id;
@@ -540,7 +629,7 @@ export function createMcpController({ panel, hooks, track }) {
     if (selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id)) {
       const list = el('div', 'ai-mcp-tool-list');
       for (const tool of toolCache.get(server.id)) {
-        list.appendChild(renderListRow(tool.name, tool.description || 'No description', () => runToolPrompt(server, tool)));
+        list.appendChild(renderListRow(tool.name, tool.description || 'No description', () => runToolPrompt(server, tool), toolMeta(tool)));
       }
       if (!list.childElementCount) list.appendChild(el('div', 'ai-history-empty', 'No tools reported.'));
       card.appendChild(list);
