@@ -73,9 +73,16 @@ async function promptForToolPermission(event, registry, permissions, serverId, t
     : await dialog.showMessageBox(options);
 
   const scope = scopes[result.response] || null;
-  if (!scope) throw new Error('MCP tool call canceled.');
+  if (!scope) return { scope: 'canceled', canceled: true };
   if (scope !== 'once') await permissions.grant(serverId, toolName, scope);
   return { scope };
+}
+
+function canceledToolResult() {
+  return {
+    canceled: true,
+    content: [{ type: 'text', text: 'MCP tool call canceled.' }],
+  };
 }
 
 function registerMcpHandlers({ ipcMain, app, authority }) {
@@ -156,7 +163,8 @@ function registerMcpHandlers({ ipcMain, app, authority }) {
 
     const alreadyAllowed = await permissions.hasPermission(sid, name);
     if (!alreadyAllowed) {
-      await promptForToolPermission(event, registry, permissions, sid, name, normalizedArgs);
+      const permission = await promptForToolPermission(event, registry, permissions, sid, name, normalizedArgs);
+      if (permission?.canceled) return canceledToolResult();
     }
 
     return clients.callTool(sid, name, normalizedArgs);

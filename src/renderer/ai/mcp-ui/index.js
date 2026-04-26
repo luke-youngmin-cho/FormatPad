@@ -42,6 +42,10 @@ function textFromToolResult(result) {
   return parts.filter(Boolean).join('\n\n').slice(0, 12000) || JSON.stringify(result || {}, null, 2).slice(0, 12000);
 }
 
+function isCanceledToolResult(result) {
+  return result?.canceled === true;
+}
+
 function resourceText(result) {
   const parts = [];
   for (const item of result?.contents || []) {
@@ -165,6 +169,11 @@ export function createMcpController({ panel, hooks, track }) {
   async function callToolWithPermission(server, tool, args) {
     const permission = await window.mcp.prepareToolCall(server.id, tool.name);
     const result = await window.mcp.callTool(server.id, tool.name, args);
+    if (isCanceledToolResult(result)) {
+      statusMessage = `${server.label} / ${tool.name} canceled.`;
+      track?.('mcp_tool_cancel', { server: server.id, tool: tool.name });
+      return null;
+    }
     callLog.unshift({
       server: server.label,
       tool: tool.name,
@@ -191,6 +200,15 @@ export function createMcpController({ panel, hooks, track }) {
       const args = parseArgs(call.arguments || call.args);
       try {
         const result = await callToolWithPermission(mapping.server, mapping.tool, args);
+        if (!result) {
+          results.push({
+            name: call.name,
+            server: mapping.server.label,
+            tool: mapping.tool.name,
+            error: 'MCP tool call canceled.',
+          });
+          continue;
+        }
         results.push({
           name: call.name,
           server: mapping.server.label,
@@ -394,6 +412,10 @@ export function createMcpController({ panel, hooks, track }) {
               const args = JSON.parse(input.value || '{}');
               hooks.closeModal?.();
               const result = await callToolWithPermission(server, tool, args);
+              if (!result) {
+                render();
+                return;
+              }
               hooks.createTextTab?.(`${tool.name} result.md`, textFromToolResult(result), 'markdown');
               render();
             } catch (err) {
