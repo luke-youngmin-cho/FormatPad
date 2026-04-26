@@ -27,7 +27,7 @@
   .terminal-block,
   .terminal-block-drawer,
   .ai-card,
-  .ai-message {
+  .ai-message-bubble {
     border-color: var(--border-color);
     background: var(--bg-secondary);
   }
@@ -3863,6 +3863,8 @@ body.drag-over::after {
   min-height: 0;
   overflow: auto;
   padding: 12px;
+  display: flex;
+  flex-direction: column;
 }
 .ai-empty {
   display: grid;
@@ -3874,16 +3876,32 @@ body.drag-over::after {
 }
 .ai-empty strong { color: var(--text-primary); }
 .ai-message {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  display: flex;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 12px;
+  padding-right: 44px;
 }
 .ai-message.user {
+  justify-content: flex-end;
+  padding: 0 0 0 44px;
+}
+.ai-message-bubble {
+  display: grid;
+  gap: 6px;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
+  min-width: min(220px, 100%);
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+  border-radius: 12px 12px 12px 4px;
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+}
+.ai-message.user .ai-message-bubble {
   border-color: color-mix(in srgb, var(--accent-color) 35%, var(--border-color));
+  border-radius: 12px 12px 4px 12px;
   background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-primary));
 }
 .ai-message-role {
@@ -3898,6 +3916,12 @@ body.drag-over::after {
   overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.55;
+}
+.ai-message.user .ai-message-role {
+  text-align: right;
+}
+.ai-message-body {
+  min-width: 0;
 }
 .ai-code-block {
   margin-top: 8px;

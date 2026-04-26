@@ -469,6 +469,23 @@ test('AI chat can run without an active document and can be canceled', async ({ 
     await page.locator('.ai-send').click();
     await expect(page.locator('.ai-send')).toHaveText('Send');
     await expect(page.locator('.ai-log')).toContainText('Canceled.');
+    await expect(page.locator('.ai-message.user').first()).toHaveCSS('justify-content', 'flex-end');
+    await expect(page.locator('.ai-message.assistant').first()).toHaveCSS('justify-content', 'flex-start');
+    const messageGaps = await page.evaluate(() => {
+      const log = document.querySelector('.ai-log')?.getBoundingClientRect();
+      const user = document.querySelector('.ai-message.user .ai-message-bubble')?.getBoundingClientRect();
+      const assistant = document.querySelector('.ai-message.assistant .ai-message-bubble')?.getBoundingClientRect();
+      return {
+        userLeft: user && log ? user.left - log.left : 0,
+        userRight: user && log ? log.right - user.right : 0,
+        assistantLeft: assistant && log ? assistant.left - log.left : 0,
+        assistantRight: assistant && log ? log.right - assistant.right : 0,
+      };
+    });
+    expect(messageGaps.userLeft).toBeGreaterThan(30);
+    expect(messageGaps.userRight).toBeLessThan(24);
+    expect(messageGaps.assistantLeft).toBeLessThan(24);
+    expect(messageGaps.assistantRight).toBeGreaterThan(30);
   } finally {
     await close();
   }

@@ -450,10 +450,12 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     }
     for (const msg of messages) {
       const item = el('article', `ai-message ${msg.role}`);
-      item.appendChild(el('div', 'ai-message-role', msg.role === 'assistant' ? 'FormatPad AI' : 'You'));
+      const bubble = el('div', 'ai-message-bubble');
+      bubble.appendChild(el('div', 'ai-message-role', msg.role === 'assistant' ? 'FormatPad AI' : 'You'));
       const content = el('div', 'ai-message-body');
       renderMessageContent(content, msg);
-      item.appendChild(content);
+      bubble.appendChild(content);
+      item.appendChild(bubble);
       logEl.appendChild(item);
     }
     logEl.scrollTop = logEl.scrollHeight;
