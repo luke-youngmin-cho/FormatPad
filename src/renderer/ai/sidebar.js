@@ -919,6 +919,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       hooks.openModal?.({
         title,
         body,
+        onClose: () => finish(''),
         footer: [
           { label: 'Cancel', onClick: () => finish('') },
           { label: 'OK', primary: true, onClick: () => finish(input.value) },
@@ -960,6 +961,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       hooks.openModal?.({
         title,
         body,
+        onClose: () => finish(''),
         footer: [
           { label: 'Cancel', onClick: () => finish('') },
           { label: 'OK', primary: true, onClick: () => finish(select.value) },
@@ -1023,6 +1025,9 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
           openModal: hooks.openModal,
           closeModal: hooks.closeModal,
           apply: hooks.replaceDocument || hooks.replaceSelectionOrDocument,
+        }).then((accepted) => {
+          if (!accepted) throw makeAbortError(`${title} canceled.`);
+          return accepted;
         });
       },
       applySelectionOrDocument: ({ title, newText }) => {
@@ -1035,6 +1040,9 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
           openModal: hooks.openModal,
           closeModal: hooks.closeModal,
           apply: hooks.replaceSelectionOrDocument,
+        }).then((accepted) => {
+          if (!accepted) throw makeAbortError(`${title} canceled.`);
+          return accepted;
         });
       },
       notify: hooks.notify,

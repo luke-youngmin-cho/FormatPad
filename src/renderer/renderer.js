@@ -5076,8 +5076,10 @@ const fmtModalEl = document.getElementById('fmt-modal');
 const fmtModalTitleEl = document.getElementById('fmt-modal-title');
 const fmtModalBodyEl = document.getElementById('fmt-modal-body');
 const fmtModalFooterEl = document.getElementById('fmt-modal-footer');
+let fmtModalOnClose = null;
 
-function openFmtModal({ title, body, footer }) {
+function openFmtModal({ title, body, footer, onClose }) {
+  fmtModalOnClose = typeof onClose === 'function' ? onClose : null;
   fmtModalTitleEl.textContent = title;
   fmtModalBodyEl.innerHTML = '';
   if (typeof body === 'string') fmtModalBodyEl.innerHTML = body;
@@ -5094,7 +5096,11 @@ function openFmtModal({ title, body, footer }) {
 }
 function closeFmtModal() {
   if (fmtModalEl.classList.contains('locked')) return;
+  if (fmtModalEl.classList.contains('hidden')) return;
   fmtModalEl.classList.add('hidden');
+  const onClose = fmtModalOnClose;
+  fmtModalOnClose = null;
+  onClose?.();
 }
 document.getElementById('fmt-modal-close').addEventListener('click', closeFmtModal);
 document.getElementById('fmt-modal-backdrop').addEventListener('click', closeFmtModal);

@@ -77,6 +77,14 @@ export function openApplyDiff({ currentText, newText, title = 'Apply AI result',
   }
 
   return new Promise(resolve => {
+    let settled = false;
+    const finish = (accepted) => {
+      if (settled) return;
+      settled = true;
+      if (accepted) apply(newText);
+      closeModal?.();
+      resolve(accepted);
+    };
     const body = document.createElement('div');
     body.className = 'ai-diff-modal';
     const intro = document.createElement('p');
@@ -99,16 +107,13 @@ export function openApplyDiff({ currentText, newText, title = 'Apply AI result',
     openModal({
       title,
       body,
+      onClose: () => finish(false),
       footer: [
-        { label: 'Cancel', onClick: () => { closeModal?.(); resolve(false); } },
+        { label: 'Cancel', onClick: () => finish(false) },
         {
           label: 'Accept',
           primary: true,
-          onClick: () => {
-            apply(newText);
-            closeModal?.();
-            resolve(true);
-          },
+          onClick: () => finish(true),
         },
       ],
     });
