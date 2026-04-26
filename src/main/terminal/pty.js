@@ -73,6 +73,19 @@ function gitBashPath() {
   ]);
 }
 
+function windowsPackageLocalCacheCandidates(packagePrefix, relativeParts) {
+  if (process.platform !== 'win32') return [];
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const packagesDir = path.join(localAppData, 'Packages');
+  try {
+    return fs.readdirSync(packagesDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && entry.name.startsWith(packagePrefix))
+      .map(entry => path.join(packagesDir, entry.name, 'LocalCache', ...relativeParts));
+  } catch {
+    return [];
+  }
+}
+
 const AI_CLI_PROFILES = [
   {
     id: 'ai-claude',
@@ -101,9 +114,14 @@ function aiCliCandidates(commandName) {
   const home = os.homedir();
   const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
   const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-  const candidates = [findOnPath(commandName)];
+  const candidates = [];
 
   if (process.platform === 'win32') {
+    if (commandName === 'codex') {
+      candidates.push(
+        ...windowsPackageLocalCacheCandidates('OpenAI.Codex_', ['Local', 'OpenAI', 'Codex', 'bin', 'codex.exe']),
+      );
+    }
     if (commandName === 'claude') {
       candidates.push(
         path.join(home, '.claude', 'local', 'bin', 'claude.exe'),
@@ -113,6 +131,7 @@ function aiCliCandidates(commandName) {
       );
     }
     candidates.push(
+      findOnPath(commandName),
       path.join(appData, 'npm', `${commandName}.cmd`),
       path.join(localAppData, 'Microsoft', 'WinGet', 'Links', `${commandName}.exe`),
       path.join(localAppData, 'Volta', 'bin', `${commandName}.exe`),
@@ -128,6 +147,7 @@ function aiCliCandidates(commandName) {
     );
   }
   candidates.push(
+    findOnPath(commandName),
     path.join(home, '.local', 'bin', commandName),
     `/usr/local/bin/${commandName}`,
     `/opt/homebrew/bin/${commandName}`,
