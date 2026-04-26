@@ -131,6 +131,10 @@ function toolMeta(tool) {
     : `Args: ${properties.length} optional fields`;
 }
 
+function plural(count, label) {
+  return `${count || 0} ${label}${count === 1 ? '' : 's'}`;
+}
+
 export function createMcpController({ panel, hooks, track }) {
   const available = typeof window !== 'undefined' && !!window.mcp;
   let servers = [];
@@ -146,13 +150,19 @@ export function createMcpController({ panel, hooks, track }) {
 
   function loadingStatus(label) {
     const node = el('div', 'ai-action-status');
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-live', 'polite');
     node.append(el('span', 'ai-spinner'), el('span', '', label));
     return node;
   }
 
   function statusNode() {
     if (!statusMessage) return null;
-    return busy ? loadingStatus(statusMessage) : el('div', 'ai-action-status', statusMessage);
+    if (busy) return loadingStatus(statusMessage);
+    const node = el('div', 'ai-action-status', statusMessage);
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-live', 'polite');
+    return node;
   }
 
   async function withBusy(label, fn) {
@@ -378,6 +388,14 @@ export function createMcpController({ panel, hooks, track }) {
     return row;
   }
 
+  function openPanelHeader(title, count, hint) {
+    const head = el('div', 'ai-mcp-list-head');
+    const copy = el('div', '');
+    copy.append(el('strong', '', title), el('span', '', hint));
+    head.append(copy, el('span', 'ai-mcp-count-pill', String(count)));
+    return head;
+  }
+
   function promptText(title, label, value) {
     return new Promise(resolve => {
       let settled = false;
@@ -553,21 +571,27 @@ export function createMcpController({ panel, hooks, track }) {
 
   function renderServer(server) {
     const status = statuses[server.id] || { state: 'stopped' };
-    const card = el('article', 'ai-mcp-card');
+    const toolsOpen = selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id);
+    const resourcesOpen = selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id);
+    const isRunning = status.state === 'running';
+    const card = el('article', `ai-mcp-card ${isRunning ? 'running' : 'stopped'} ${toolsOpen || resourcesOpen ? 'expanded' : ''}`);
     const head = el('div', 'ai-mcp-card-head');
     const title = el('div', '');
-    title.appendChild(el('strong', '', server.label));
-    const statusParts = [status.state];
-    if (status.toolCount) statusParts.push(`${status.toolCount} tools`);
-    if (status.resourceCount) statusParts.push(`${status.resourceCount} resources`);
-    if (status.resourcesUnsupported) statusParts.push('no resources API');
-    title.appendChild(el('span', '', statusParts.join(' / ')));
+    const titleLine = el('div', 'ai-mcp-title-line');
+    titleLine.append(el('strong', '', server.label), el('span', `ai-mcp-state ${isRunning ? 'running' : ''}`, status.state || 'stopped'));
+    const metaLine = el('div', 'ai-mcp-meta');
+    metaLine.appendChild(el('span', '', plural(status.toolCount || 0, 'tool')));
+    metaLine.appendChild(el('span', '', status.resourcesUnsupported ? 'no resources API' : plural(status.resourceCount || 0, 'resource')));
+    title.append(titleLine, metaLine);
     const enable = document.createElement('input');
     enable.type = 'checkbox';
-    enable.checked = server.enabled && status.state === 'running';
+    enable.checked = !!server.enabled;
     enable.disabled = busy;
+    enable.setAttribute('aria-label', `${server.enabled ? 'Disable' : 'Enable'} ${server.label}`);
     enable.addEventListener('change', () => toggleServer(server, enable.checked));
-    head.append(title, enable);
+    const enableWrap = el('label', 'ai-mcp-enable');
+    enableWrap.append(enable, el('span', '', server.enabled ? 'Enabled' : 'Enable'));
+    head.append(title, enableWrap);
     card.appendChild(head);
     card.appendChild(el('p', 'ai-mcp-desc', server.description || `${server.command} ${(server.args || []).join(' ')}`));
     if (status.lastError) card.appendChild(el('pre', 'ai-mcp-error', status.lastError));
@@ -578,10 +602,11 @@ export function createMcpController({ panel, hooks, track }) {
     edit.type = 'button';
     edit.disabled = busy;
     edit.addEventListener('click', () => editServer(server));
-    const toolsOpen = selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id);
-    const resourcesOpen = selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id);
     const tools = el('button', '', toolsOpen ? 'Hide tools' : 'Tools');
     tools.type = 'button';
+    tools.classList.toggle('active', toolsOpen);
+    tools.setAttribute('aria-pressed', String(toolsOpen));
+    tools.setAttribute('aria-expanded', String(toolsOpen));
     tools.disabled = busy;
     tools.title = status.state === 'running' ? 'List tools exposed by this MCP server.' : 'Enable this server before listing tools.';
     tools.addEventListener('click', async () => {
@@ -616,6 +641,9 @@ export function createMcpController({ panel, hooks, track }) {
     });
     const resources = el('button', '', resourcesOpen ? 'Hide resources' : 'Resources');
     resources.type = 'button';
+    resources.classList.toggle('active', resourcesOpen);
+    resources.setAttribute('aria-pressed', String(resourcesOpen));
+    resources.setAttribute('aria-expanded', String(resourcesOpen));
     resources.disabled = busy;
     resources.title = status.resourcesUnsupported
       ? 'This server does not expose MCP resources.'
@@ -683,20 +711,28 @@ export function createMcpController({ panel, hooks, track }) {
     card.appendChild(actions);
 
     if (selectedServerId === server.id && selectedPanel === 'tools' && toolCache.has(server.id)) {
+      const items = toolCache.get(server.id);
+      const panelWrap = el('div', 'ai-mcp-open-panel');
+      panelWrap.appendChild(openPanelHeader('Tools', items.length, 'Click a tool to inspect arguments and request permission before running it.'));
       const list = el('div', 'ai-mcp-tool-list');
-      for (const tool of toolCache.get(server.id)) {
+      for (const tool of items) {
         list.appendChild(renderListRow(tool.name, tool.description || 'No description', () => runToolPrompt(server, tool), toolMeta(tool)));
       }
-      if (!list.childElementCount) list.appendChild(el('div', 'ai-history-empty', 'No tools reported.'));
-      card.appendChild(list);
+      if (!list.childElementCount) list.appendChild(el('div', 'ai-mcp-empty', 'No tools reported.'));
+      panelWrap.appendChild(list);
+      card.appendChild(panelWrap);
     }
     if (selectedServerId === server.id && selectedPanel === 'resources' && resourceCache.has(server.id)) {
+      const items = resourceCache.get(server.id);
+      const panelWrap = el('div', 'ai-mcp-open-panel');
+      panelWrap.appendChild(openPanelHeader('Resources', items.length, 'Open a listed resource, or use Open URI if you already know the URI.'));
       const list = el('div', 'ai-mcp-tool-list');
-      for (const resource of resourceCache.get(server.id)) {
+      for (const resource of items) {
         list.appendChild(renderListRow(resource.name || resource.uri, resource.description || resource.uri, () => openResource(server, resource)));
       }
-      if (!list.childElementCount) list.appendChild(el('div', 'ai-history-empty', 'No resources reported. Use Open URI if you know a resource URI.'));
-      card.appendChild(list);
+      if (!list.childElementCount) list.appendChild(el('div', 'ai-mcp-empty', 'No resources reported. Use Open URI if you know a resource URI.'));
+      panelWrap.appendChild(list);
+      card.appendChild(panelWrap);
     }
     return card;
   }
@@ -732,7 +768,7 @@ export function createMcpController({ panel, hooks, track }) {
     const head = el('div', 'ai-actions-head');
     const title = el('div', '');
     title.appendChild(el('strong', '', 'MCP servers'));
-    title.appendChild(el('span', '', 'Disabled by default. Tool calls always require permission.'));
+    title.appendChild(el('span', '', 'Enable a server, then open Tools or Resources. Tool calls always require permission.'));
     const buttons = el('div', 'ai-mcp-actions');
     for (const [label, fn] of [
       ['Refresh', async () => withBusy('Refreshing MCP servers...', async () => {
@@ -756,6 +792,11 @@ export function createMcpController({ panel, hooks, track }) {
     panel.appendChild(head);
     const status = statusNode();
     if (status) panel.appendChild(status);
+    if (!servers.length) {
+      const empty = el('div', 'ai-empty');
+      empty.innerHTML = '<strong>No MCP servers configured.</strong><span>Add a server or import an MCP config to get started.</span>';
+      panel.appendChild(empty);
+    }
     for (const server of servers) panel.appendChild(renderServer(server));
     panel.appendChild(renderLog());
   }

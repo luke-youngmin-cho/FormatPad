@@ -4181,16 +4181,26 @@ body.drag-over::after {
   border-radius: 11px;
   background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
 }
+.ai-mcp-card.running {
+  border-color: color-mix(in srgb, var(--syntax-string, #9ece6a) 28%, var(--border-color));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--syntax-string, #9ece6a) 88%, transparent);
+}
+.ai-mcp-card.expanded {
+  border-color: color-mix(in srgb, var(--accent-color) 48%, var(--border-color));
+  background:
+    radial-gradient(circle at 12px 0, color-mix(in srgb, var(--accent-color) 14%, transparent), transparent 44px),
+    color-mix(in srgb, var(--bg-primary) 78%, transparent);
+}
 .ai-mcp-card-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
-.ai-mcp-card-head div {
+.ai-mcp-card-head > div {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 5px;
 }
 .ai-mcp-card-head strong {
   overflow: hidden;
@@ -4205,6 +4215,58 @@ body.drag-over::after {
   font-size: 11px;
   line-height: 1.45;
 }
+.ai-mcp-title-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.ai-mcp-title-line strong {
+  min-width: 0;
+}
+.ai-mcp-state {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-secondary) 76%, transparent);
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.ai-mcp-state.running {
+  border-color: color-mix(in srgb, var(--syntax-string, #9ece6a) 38%, var(--border-color));
+  background: color-mix(in srgb, var(--syntax-string, #9ece6a) 13%, transparent);
+  color: var(--syntax-string, #9ece6a);
+}
+.ai-mcp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.ai-mcp-meta span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-color) 34%, transparent);
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.2;
+}
+.ai-mcp-enable {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  user-select: none;
+}
+.ai-mcp-enable input {
+  accent-color: var(--accent-color);
+}
 .ai-mcp-actions {
   display: flex;
   flex-wrap: wrap;
@@ -4214,9 +4276,70 @@ body.drag-over::after {
   padding: 5px 8px;
   font-size: 11px;
 }
+.ai-mcp-actions button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-color) 42%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+  color: var(--text-primary);
+}
+.ai-mcp-actions button.active {
+  border-color: color-mix(in srgb, var(--accent-color) 72%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-color) 17%, transparent);
+  color: var(--accent-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 26%, transparent);
+  font-weight: 700;
+}
+.ai-mcp-actions button.active::after {
+  content: "on";
+  margin-left: 6px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-color) 20%, transparent);
+  color: var(--accent-color);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
 .ai-mcp-actions button:disabled {
   opacity: 0.58;
   cursor: wait;
+}
+.ai-mcp-open-panel {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 34%, var(--border-color));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary) 58%, transparent);
+}
+.ai-mcp-list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ai-mcp-list-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.ai-mcp-list-head strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.ai-mcp-list-head span {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.ai-mcp-count-pill {
+  flex: none;
+  min-width: 24px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+  color: var(--accent-color) !important;
+  font-weight: 700;
+  text-align: center;
 }
 .ai-mcp-tool-list {
   display: grid;
@@ -4250,6 +4373,15 @@ body.drag-over::after {
   color: var(--accent-color);
   font-size: 10px;
   font-weight: 600;
+}
+.ai-mcp-empty {
+  padding: 9px;
+  border: 1px dashed color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
 }
 .ai-mcp-arg-help {
   display: grid;
@@ -4289,6 +4421,10 @@ body.drag-over::after {
   display: grid;
   gap: 7px;
   margin-top: 14px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-primary) 65%, transparent);
 }
 .ai-mcp-log strong {
   font-size: 12px;

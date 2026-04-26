@@ -189,11 +189,24 @@ test('MCP tool lists are collapsible and explain argument schemas', async ({ pag
     const card = page.locator('.ai-mcp-card').filter({ hasText: 'Mock MCP' });
     await expect(card).toBeVisible();
     await card.getByRole('button', { name: 'Tools' }).click();
-    await expect(card.getByRole('button', { name: 'Hide tools' })).toBeVisible();
+    const hideTools = card.getByRole('button', { name: 'Hide tools' });
+    await expect(hideTools).toBeVisible();
+    await expect(hideTools).toHaveAttribute('aria-pressed', 'true');
+    await expect(hideTools).toHaveAttribute('aria-expanded', 'true');
+    await expect(hideTools).toHaveClass(/active/);
     await expect(card.getByRole('button', { name: /read_file/ })).toContainText('required path');
 
     await card.getByRole('button', { name: 'Hide tools' }).click();
     await expect(card.getByRole('button', { name: /read_file/ })).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Tools' })).toHaveAttribute('aria-pressed', 'false');
+
+    await card.getByRole('button', { name: 'Resources' }).click();
+    const hideResources = card.getByRole('button', { name: 'Hide resources' });
+    await expect(hideResources).toHaveAttribute('aria-pressed', 'true');
+    await expect(hideResources).toHaveAttribute('aria-expanded', 'true');
+    await expect(hideResources).toHaveClass(/active/);
+    await expect(card.locator('.ai-mcp-empty')).toContainText('No resources reported');
+    await hideResources.click();
 
     await card.getByRole('button', { name: 'Tools' }).click();
     await card.getByRole('button', { name: /read_file/ }).click();
