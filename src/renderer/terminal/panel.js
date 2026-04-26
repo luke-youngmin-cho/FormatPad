@@ -346,6 +346,13 @@ export function createTerminalPanel({ hooks, track }) {
 
   function askOutsideWorkspace(cwd, workspaceRoot) {
     return new Promise(resolve => {
+      let settled = false;
+      const finish = (allowed) => {
+        if (settled) return;
+        settled = true;
+        hooks.closeModal?.();
+        resolve(allowed);
+      };
       const body = el('div', 'terminal-confirm');
       body.innerHTML = `
         <p>The working directory is outside the current workspace.</p>
@@ -356,9 +363,10 @@ export function createTerminalPanel({ hooks, track }) {
       hooks.openModal?.({
         title: 'Run outside workspace?',
         body,
+        onClose: () => finish(false),
         footer: [
-          { label: 'Cancel', onClick: () => { hooks.closeModal?.(); resolve(false); } },
-          { label: 'Allow once', primary: true, onClick: () => { hooks.closeModal?.(); resolve(true); } },
+          { label: 'Cancel', onClick: () => finish(false) },
+          { label: 'Allow once', primary: true, onClick: () => finish(true) },
         ],
       });
     });

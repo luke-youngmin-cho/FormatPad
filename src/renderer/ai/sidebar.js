@@ -601,6 +601,18 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     return `${provider.displayName}${model ? ` / ${model}` : ''}`;
   }
 
+  function ensureTabActive(tabId, message = 'Original document was closed before applying the AI result.') {
+    if (!tabId) return hooks.getActiveTab?.();
+    let active = hooks.getActiveTab?.();
+    if (active?.id === tabId) return active;
+    const restored = hooks.activateTab?.(tabId);
+    active = hooks.getActiveTab?.();
+    if (restored === false || active?.id !== tabId) {
+      throw makeAbortError(message);
+    }
+    return active;
+  }
+
   async function* chatWithCurrentProvider({ requestMessages, tools = [], abortSignal }) {
     try {
       keyStatus = await keyStore.status();
@@ -887,14 +899,22 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     });
     const replacement = (extractCode(response, 'markdown') || response).trim();
     if (!replacement) throw new Error(`AI returned no content for ${section}.`);
-    return openApplyDiff({
-      currentText: current.text || '',
+    ensureTabActive(active.id, 'Template document was closed before applying the AI result.');
+    const latest = hooks.getTemplateSection?.(section);
+    if (!latest) throw new Error(`Section not found: ${section}`);
+    const accepted = await openApplyDiff({
+      currentText: latest.text || '',
       newText: replacement,
       title: `Fill template section: ${section}`,
       openModal: hooks.openModal,
       closeModal: hooks.closeModal,
-      apply: (text) => hooks.replaceTemplateSection?.(section, text),
+      apply: (text) => {
+        ensureTabActive(active.id, 'Template document was closed before applying the AI result.');
+        hooks.replaceTemplateSection?.(section, text);
+      },
     });
+    if (!accepted) throw makeAbortError(`Fill template section: ${section} canceled.`);
+    return accepted;
   }
 
   async function completeTemplateSections(sections) {
@@ -1081,13 +1101,18 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       },
       applyDocument: ({ title, newText }) => {
         ensureActionActive();
+        const target = ensureTabActive(active.id);
         return openApplyDiff({
-          currentText: hooks.getActiveTab?.()?.content || '',
+          currentText: target?.content || '',
           newText,
           title,
           openModal: hooks.openModal,
           closeModal: hooks.closeModal,
-          apply: hooks.replaceDocument || hooks.replaceSelectionOrDocument,
+          apply: (text) => {
+            ensureActionActive();
+            ensureTabActive(active.id);
+            (hooks.replaceDocument || hooks.replaceSelectionOrDocument)?.(text);
+          },
         }).then((accepted) => {
           if (!accepted) throw makeAbortError(`${title} canceled.`);
           return accepted;
@@ -1095,14 +1120,18 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       },
       applySelectionOrDocument: ({ title, newText }) => {
         ensureActionActive();
-        const latest = hooks.getActiveTab?.();
+        const latest = ensureTabActive(active.id);
         return openApplyDiff({
           currentText: latest?.selection || latest?.content || '',
           newText,
           title,
           openModal: hooks.openModal,
           closeModal: hooks.closeModal,
-          apply: hooks.replaceSelectionOrDocument,
+          apply: (text) => {
+            ensureActionActive();
+            ensureTabActive(active.id);
+            hooks.replaceSelectionOrDocument?.(text);
+          },
         }).then((accepted) => {
           if (!accepted) throw makeAbortError(`${title} canceled.`);
           return accepted;

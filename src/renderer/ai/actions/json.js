@@ -29,6 +29,8 @@ function sampleFor(schema) {
   if (!schema || typeof schema !== 'object') return null;
   if (schema.example !== undefined) return schema.example;
   if (schema.default !== undefined) return schema.default;
+  if (schema.const !== undefined) return schema.const;
+  if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
   const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
   if (type === 'object') {
     const out = {};
@@ -41,6 +43,25 @@ function sampleFor(schema) {
   if (type === 'boolean') return true;
   if (type === 'null') return null;
   return 'string';
+}
+
+function isJsonSchemaLike(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const schemaKeys = [
+    '$schema',
+    '$id',
+    'type',
+    'properties',
+    'items',
+    'required',
+    'enum',
+    'const',
+    'oneOf',
+    'anyOf',
+    'allOf',
+    'additionalProperties',
+  ];
+  return schemaKeys.some(key => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function flattenRows(value, prefix = '', out = {}) {
@@ -186,7 +207,7 @@ registerAction({
   id: 'json.generate-samples',
   format: 'json',
   scope: 'document',
-  label: 'Generate sample data',
+  label: 'Generate samples from schema',
   icon: ICON,
   requiresAI: false,
   description: 'Generate local sample data from the current JSON Schema.',
@@ -195,6 +216,9 @@ registerAction({
     if (!countText) return { message: 'Canceled' };
     const count = Math.max(1, Math.min(20, Number(countText) || 3));
     const schema = parseJson(context);
+    if (!isJsonSchemaLike(schema)) {
+      throw new Error('Open a JSON Schema first, or run Generate JSON Schema on this JSON document.');
+    }
     const samples = Array.from({ length: count }, () => sampleFor(schema));
     ui.openTab({ name: 'sample-data.json', content: JSON.stringify(samples, null, 2), viewType: 'json' });
     return { message: 'Sample data opened' };

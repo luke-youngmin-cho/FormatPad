@@ -66,7 +66,9 @@ registerAction({
     const defaultColumn = Number.isInteger(context.detail?.column)
       ? String(context.detail.column + 1)
       : (table.headers[0] || '1');
-    const c = colIndex(table.headers, await ui.promptText('Type + outliers', 'Column name or 1-based index', defaultColumn));
+    const column = await ui.promptText('Type + outliers', 'Column name or 1-based index', defaultColumn);
+    if (!column) return { message: 'Canceled' };
+    const c = colIndex(table.headers, column);
     if (c < 0) throw new Error('Column not found.');
     const type = infer(table.data.map(r => r[c]));
     const next = table.data.map(row => row.slice());

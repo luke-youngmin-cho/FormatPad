@@ -5079,6 +5079,11 @@ const fmtModalFooterEl = document.getElementById('fmt-modal-footer');
 let fmtModalOnClose = null;
 
 function openFmtModal({ title, body, footer, onClose }) {
+  if (!fmtModalEl.classList.contains('hidden')) {
+    const previousOnClose = fmtModalOnClose;
+    fmtModalOnClose = null;
+    previousOnClose?.();
+  }
   fmtModalOnClose = typeof onClose === 'function' ? onClose : null;
   fmtModalTitleEl.textContent = title;
   fmtModalBodyEl.innerHTML = '';
@@ -5114,6 +5119,13 @@ document.addEventListener('keydown', (e) => {
 
 function confirmUrlFetchModal(detail) {
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      closeFmtModal();
+      resolve(ok);
+    };
     const body = document.createElement('div');
     body.className = 'share-modal';
     const title = detail.kind === 'large' ? 'Large URL import' : 'External URL import';
@@ -5128,9 +5140,10 @@ function confirmUrlFetchModal(detail) {
     openFmtModal({
       title,
       body,
+      onClose: () => finish(false),
       footer: [
-        { label: 'Cancel', onClick: () => { closeFmtModal(); resolve(false); } },
-        { label: 'Fetch file', primary: true, onClick: () => { closeFmtModal(); resolve(true); } },
+        { label: 'Cancel', onClick: () => finish(false) },
+        { label: 'Fetch file', primary: true, onClick: () => finish(true) },
       ],
     });
   });
@@ -6251,6 +6264,11 @@ window.addEventListener('resize', () => {
         }));
       },
       getWorkspacePath() { return workspacePath; },
+      activateTab(tabId) {
+        if (!tabs.some(tab => tab.id === tabId)) return false;
+        switchToTab(tabId);
+        return true;
+      },
       getRunnerAttachment() { return terminalController?.getLastOutput?.() || null; },
       getTemplateSection(section) {
         const active = getActiveTab();

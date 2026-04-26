@@ -34,6 +34,40 @@ async function installHangingAiMock(page: Page): Promise<void> {
   });
 }
 
+async function installDelayedAiMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('fp-ai-provider', 'openai-compatible');
+    localStorage.setItem('fp-ai-endpoint-openai-compatible', 'https://formatpad.test');
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.startsWith('https://formatpad.test/chat/completions')) {
+        return originalFetch(input, init);
+      }
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          const timer = window.setTimeout(() => {
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Explained."}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          }, 1000);
+          init?.signal?.addEventListener('abort', () => {
+            window.clearTimeout(timer);
+            controller.error(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        },
+      });
+      return Promise.resolve(new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }));
+    };
+  });
+}
+
 async function installMcpMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const server = {
@@ -255,13 +289,80 @@ test('JSON sample generation cancel does not create an output tab', async ({ pag
 
     await page.locator('#btn-ai').click();
     await page.locator('.ai-mode-tabs button[data-mode="actions"]').click();
-    await page.getByRole('button', { name: /Generate sample data/ }).click();
+    await page.getByRole('button', { name: /Generate samples from schema/ }).click();
     await expect(page.locator('#fmt-modal')).toContainText('Generate samples');
     await page.locator('#fmt-modal-footer button', { hasText: 'Cancel' }).click();
 
     await expect(page.locator('.ai-action-running')).toHaveCount(0);
     await expect(page.locator('.ai-action-status')).toContainText('Canceled');
     await expect(page.locator('.tab-item')).not.toContainText('sample-data.json');
+  } finally {
+    await close();
+  }
+});
+
+test('JSON sample generation refuses non-schema documents', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(async () => {
+      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad","beta":2}'], 'sample.json', { type: 'application/json' }));
+    });
+
+    await page.locator('#btn-ai').click();
+    await page.locator('.ai-mode-tabs button[data-mode="actions"]').click();
+    await page.getByRole('button', { name: /Generate samples from schema/ }).click();
+    await page.locator('#fmt-modal-footer button.primary').click();
+
+    await expect(page.locator('.ai-action-running')).toHaveCount(0);
+    await expect(page.locator('.ai-action-status')).toContainText('Open a JSON Schema first');
+    await expect(page.locator('.tab-item')).not.toContainText('sample-data.json');
+  } finally {
+    await close();
+  }
+});
+
+test('AI edit apply returns to the source tab after tab switching', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installDelayedAiMock(page);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(async () => {
+      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad",}'], 'broken.json', { type: 'application/json' }));
+      await (window as any).formatpad.dropFile(new File(['{"other":true}'], 'other.json', { type: 'application/json' }));
+    });
+
+    await page.locator('.tab-item').filter({ hasText: 'broken.json' }).click();
+    await page.locator('#btn-ai').click();
+    await page.locator('.ai-mode-tabs button[data-mode="actions"]').click();
+    await page.getByRole('button', { name: /Repair \+ explain/ }).click();
+    await expect(page.locator('.ai-action-running')).toContainText('Repair + explain');
+
+    await page.locator('.tab-item').filter({ hasText: 'other.json' }).click();
+    await expect(page.locator('.tab-item.active')).toContainText('other.json');
+    await expect(page.locator('#fmt-modal')).toContainText('Repair JSON');
+    await expect(page.locator('.tab-item.active')).toContainText('broken.json');
+
+    await page.locator('#fmt-modal-footer button.primary').click();
+    await page.locator('.tab-item').filter({ hasText: 'broken.json' }).click();
+    await expect(page.locator('.cm-content')).toContainText('"name":"FormatPad"');
+
+    await page.locator('.tab-item').filter({ hasText: 'other.json' }).click();
+    await expect(page.locator('.cm-content')).toContainText('"other":true');
   } finally {
     await close();
   }

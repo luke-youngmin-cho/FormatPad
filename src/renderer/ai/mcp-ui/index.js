@@ -348,6 +348,13 @@ export function createMcpController({ panel, hooks, track }) {
 
   function promptText(title, label, value) {
     return new Promise(resolve => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        hooks.closeModal?.();
+        resolve(result);
+      };
       const body = el('div', 'ai-settings');
       const input = document.createElement('input');
       input.type = 'text';
@@ -358,9 +365,10 @@ export function createMcpController({ panel, hooks, track }) {
       hooks.openModal?.({
         title,
         body,
+        onClose: () => finish(''),
         footer: [
-          { label: 'Cancel', onClick: () => { hooks.closeModal?.(); resolve(''); } },
-          { label: 'Open', primary: true, onClick: () => { hooks.closeModal?.(); resolve(input.value.trim()); } },
+          { label: 'Cancel', onClick: () => finish('') },
+          { label: 'Open', primary: true, onClick: () => finish(input.value.trim()) },
         ],
       });
       setTimeout(() => input.focus(), 0);
