@@ -1,6 +1,6 @@
 import { confirmWebKeyStorage } from './key-warning.js';
 
-const DB_NAME = 'formatpad-ai';
+const DB_NAME = 'orpad-ai';
 const DB_VERSION = 2;
 const STORE = 'keys';
 const PROVIDERS = ['openai', 'anthropic', 'openrouter', 'openai-compatible'];
@@ -97,7 +97,7 @@ function createWebKeyStore() {
 
 function createDesktopKeyStore() {
   async function* chat(request) {
-    if (!window.formatpad?.aiChat) throw new Error('Desktop AI proxy is unavailable.');
+    if (!window.orpad?.aiChat) throw new Error('Desktop AI proxy is unavailable.');
     const requestId = crypto.randomUUID?.() || `ai-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const queue = [];
     let wake = null;
@@ -108,20 +108,20 @@ function createDesktopKeyStore() {
         wake = null;
       }
     };
-    const off = window.formatpad.aiChat.onEvent((event) => {
+    const off = window.orpad.aiChat.onEvent((event) => {
       if (event?.requestId !== requestId) return;
       queue.push(event);
       notify();
     });
     const abort = () => {
-      window.formatpad.aiChat.cancel(requestId).catch(() => {});
+      window.orpad.aiChat.cancel(requestId).catch(() => {});
       queue.push({ requestId, type: 'error', message: 'AI request canceled.' });
       notify();
     };
     request.abortSignal?.addEventListener('abort', abort, { once: true });
 
     try {
-      const started = await window.formatpad.aiChat.start({
+      const started = await window.orpad.aiChat.start({
         ...request,
         requestId,
       });
@@ -144,21 +144,21 @@ function createDesktopKeyStore() {
     } finally {
       request.abortSignal?.removeEventListener('abort', abort);
       off?.();
-      if (!stopped) window.formatpad.aiChat.cancel(requestId).catch(() => {});
+      if (!stopped) window.orpad.aiChat.cancel(requestId).catch(() => {});
     }
   }
 
   return {
-    status: () => window.formatpad.aiKeys.status(),
-    set: (provider, key, metadata) => window.formatpad.aiKeys.set(provider, key, metadata),
-    remove: (provider) => window.formatpad.aiKeys.remove(provider),
+    status: () => window.orpad.aiKeys.status(),
+    set: (provider, key, metadata) => window.orpad.aiKeys.set(provider, key, metadata),
+    remove: (provider) => window.orpad.aiKeys.remove(provider),
     chat,
     desktopProxy: true,
   };
 }
 
 export function createAIKeyStore() {
-  if (window.formatpad?.aiKeys && window.formatpad?.platform !== 'web') {
+  if (window.orpad?.aiKeys && window.orpad?.platform !== 'web') {
     return createDesktopKeyStore();
   }
   return createWebKeyStore();

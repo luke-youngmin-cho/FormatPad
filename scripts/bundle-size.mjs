@@ -1,5 +1,5 @@
 /**
- * Bundle size check for FormatPad web build.
+ * Bundle size check for OrPAD web build.
  *
  * Builds the web bundle IN MEMORY (never writes to docs/) so this script can
  * run in CI and locally without touching the deploy artifact. Measures
@@ -57,7 +57,7 @@ const result = await esbuild.build({
   }],
   define: {
     'process.env.NODE_ENV': '"production"',
-    'process.env.FORMATPAD_WEB': '"true"',
+    'process.env.ORPAD_WEB': '"true"',
     'process.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN || ''),
     'process.env.PLAUSIBLE_DOMAIN': JSON.stringify(process.env.PLAUSIBLE_DOMAIN || ''),
     'process.env.APP_VERSION': JSON.stringify(PACKAGE.version),
@@ -87,7 +87,7 @@ const pwaHead = [
   '  <meta name="theme-color" content="#0f172a">',
   '  <meta name="apple-mobile-web-app-capable" content="yes">',
   '  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
-  '  <meta name="apple-mobile-web-app-title" content="FormatPad">',
+  '  <meta name="apple-mobile-web-app-title" content="OrPAD">',
   '  <link rel="apple-touch-icon" href="icons/icon-192.png">',
 ].join('\n');
 const builtHtml = srcHtml
@@ -112,8 +112,8 @@ const builtHtml = srcHtml
     '<script src="renderer.js"></script>'
   )
   .replace(
-    '  <title>FormatPad</title>',
-    `${pwaHead}\n  <title>FormatPad</title>`
+    '  <title>OrPAD</title>',
+    `${pwaHead}\n  <title>OrPAD</title>`
   );
 
 // ── 4. Measure gzipped sizes ─────────────────────────────────────────────────

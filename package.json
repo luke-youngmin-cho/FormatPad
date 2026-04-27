@@ -1,8 +1,8 @@
 {
-  "name": "formatpad",
-  "version": "1.0.0-beta.2",
-  "productName": "FormatPad",
-  "description": "Fast multi-format viewer and editor — Markdown, JSON, YAML, CSV/TSV, TOML, XML, HTML, Mermaid, .env, plain text/log.",
+  "name": "orpad",
+  "version": "1.0.0-beta.3",
+  "productName": "OrPAD",
+  "description": "OrPAD (Orchestration Pipeline Authoring & Development) is a local-first multi-format workspace for Markdown, structured data, diagrams, AI actions, MCP tools, terminals, Git status, and web/PWA workflows.",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -17,7 +17,7 @@
     "dist:portable": "npm run build:renderer && electron-builder --win portable --publish=never",
     "release:write-updater-key": "node scripts/write-updater-public-key.mjs",
     "release:manifest": "node scripts/create-release-manifest.mjs",
-    "build:icons": "png2icons assets/icon.png assets/icon -icns -hm",
+    "build:icons": "png2icons assets/icon.png assets/icon -allwe -hm",
     "size": "node scripts/bundle-size.mjs",
     "test": "playwright test",
     "test:ui": "playwright test --ui",

@@ -6,11 +6,11 @@ import { createMcpController } from './mcp-ui/index.js';
 import { t } from '../i18n.js';
 
 const LS = {
-  visible: 'fp-ai-sidebar-visible',
-  width: 'fp-ai-sidebar-width',
-  provider: 'fp-ai-provider',
-  includeTabs: 'fp-ai-include-tabs',
-  includeTree: 'fp-ai-include-tree',
+  visible: 'orpad-ai-sidebar-visible',
+  width: 'orpad-ai-sidebar-width',
+  provider: 'orpad-ai-provider',
+  includeTabs: 'orpad-ai-include-tabs',
+  includeTree: 'orpad-ai-include-tree',
 };
 
 function el(tag, className, text) {
@@ -94,11 +94,11 @@ function fileName(path) {
 }
 
 function modelKey(providerId) {
-  return `fp-ai-model-${providerId}`;
+  return `orpad-ai-model-${providerId}`;
 }
 
 function endpointKey(providerId) {
-  return `fp-ai-endpoint-${providerId}`;
+  return `orpad-ai-endpoint-${providerId}`;
 }
 
 function getSavedModel(provider) {
@@ -459,7 +459,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
             await navigator.clipboard.writeText(code);
             return;
           }
-          window.dispatchEvent(new CustomEvent('formatpad-terminal-prefill', {
+          window.dispatchEvent(new CustomEvent('orpad-terminal-prefill', {
             detail: { command: code, mode: target.value },
           }));
         });
@@ -841,7 +841,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       }
       const sep = workspacePath.includes('\\') ? '\\' : '/';
       const target = `${workspacePath.replace(/[\\/]+$/, '')}${sep}${arg.replace(/[\\/]+/g, sep)}`;
-      const content = await window.formatpad.readFile(target);
+      const content = await window.orpad.readFile(target);
       composer.value = `<file path="${arg}">\n${content}\n</file>\n\n${composer.value}`;
       updateFooter();
       return true;
@@ -953,7 +953,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
   async function completeWithProvider({ prompt, messages: requestMessages, system, abortSignal, timeoutMs = 120000 }) {
     throwIfSignalAborted(abortSignal);
     const messagesForProvider = requestMessages || [
-      { role: 'system', content: system || 'You are FormatPad AI. Return concise, directly usable output.' },
+      { role: 'system', content: system || 'You are OrPAD AI. Return concise, directly usable output.' },
       { role: 'user', content: prompt },
     ];
     const timeoutController = new AbortController();
@@ -1008,7 +1008,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     const response = await completeWithProvider({
       abortSignal,
       prompt: templateSectionPrompt({ active, section, sectionText: current.text }),
-      system: 'You are FormatPad AI. Fill one Markdown template section at a time. Return only Markdown for the requested section body.',
+      system: 'You are OrPAD AI. Fill one Markdown template section at a time. Return only Markdown for the requested section body.',
     });
     const replacement = (extractCode(response, 'markdown') || response).trim();
     if (!replacement) throw new Error(`AI returned no content for ${section}.`);
@@ -1454,7 +1454,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     });
   });
 
-  window.addEventListener('formatpad-ai-run-action', (event) => {
+  window.addEventListener('orpad-ai-run-action', (event) => {
     const action = getAction(event.detail?.id);
     if (!action) return;
     activeMode = 'actions';
@@ -1462,12 +1462,12 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     renderMode();
     runAIAction(action, event.detail || {});
   });
-  window.addEventListener('formatpad-ai-open-actions', () => {
+  window.addEventListener('orpad-ai-open-actions', () => {
     activeMode = 'actions';
     toggle(true);
     renderMode();
   });
-  window.addEventListener('formatpad-ai-prefill', (event) => {
+  window.addEventListener('orpad-ai-prefill', (event) => {
     const text = String(event.detail?.text || '');
     if (!text) return;
     activeMode = 'chat';
@@ -1477,7 +1477,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     updateFooter();
     composer.focus();
   });
-  window.addEventListener('formatpad-runner-output', (event) => {
+  window.addEventListener('orpad-runner-output', (event) => {
     runnerAttachment = event.detail || hooks.getRunnerAttachment?.() || null;
     includeRunnerOutput = !!runnerAttachment;
     runnerAttachmentUntil = Date.now() + 60_000;
@@ -1489,7 +1489,7 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     renderRunnerChip();
     updateFooter();
   });
-  window.addEventListener('formatpad-ai-fill-template-section', (event) => {
+  window.addEventListener('orpad-ai-fill-template-section', (event) => {
     const section = String(event.detail?.section || '').trim();
     if (!section) return;
     activeMode = 'chat';
@@ -1497,10 +1497,10 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
     renderMode();
     fillTemplateSection(section).catch(err => hooks.notify?.('Templates', err));
   });
-  window.addEventListener('formatpad-ai-complete-template', (event) => {
+  window.addEventListener('orpad-ai-complete-template', (event) => {
     completeTemplateSections(event.detail?.sections || []);
   });
-  window.addEventListener('formatpad-ai-load-handover', (event) => {
+  window.addEventListener('orpad-ai-load-handover', (event) => {
     const text = String(event.detail?.content || '').trim();
     if (!text) return;
     messages = [];

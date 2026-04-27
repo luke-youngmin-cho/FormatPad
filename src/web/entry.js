@@ -1,14 +1,14 @@
 // Web build entry. Install the browser platform adapter (which sets
-// window.formatpad) before the renderer module runs its top-level code.
+// window.orpad) before the renderer module runs its top-level code.
 import { Workbox } from 'workbox-window';
 import { decompressSharedContent } from './url-sharing.js';
 import './platform-adapter.js';
 import '../renderer/renderer.js';
 
-const PWA_STYLE_ID = 'fp-pwa-style';
-const PWA_ROOT_ID = 'fp-pwa-banner-root';
-const INSTALL_VISIT_COUNT_KEY = 'fp-pwa-visit-count';
-const INSTALL_DISMISSED_UNTIL_KEY = 'fp-pwa-install-dismissed-until';
+const PWA_STYLE_ID = 'orpad-pwa-style';
+const PWA_ROOT_ID = 'orpad-pwa-banner-root';
+const INSTALL_VISIT_COUNT_KEY = 'orpad-pwa-visit-count';
+const INSTALL_DISMISSED_UNTIL_KEY = 'orpad-pwa-install-dismissed-until';
 const DISMISS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function readNumber(key, fallback = 0) {
@@ -42,7 +42,7 @@ function ensurePwaStyle() {
       transform: translateX(-50%);
       pointer-events: none;
     }
-    .fp-pwa-banner {
+    .orpad-pwa-banner {
       pointer-events: auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -57,27 +57,27 @@ function ensurePwaStyle() {
       box-shadow: 0 16px 46px rgba(0, 0, 0, 0.35);
       color: var(--text-primary);
     }
-    .fp-pwa-banner.offline {
+    .orpad-pwa-banner.offline {
       border-color: var(--syntax-meta, #e0af68);
       border-color: color-mix(in srgb, var(--syntax-meta, #e0af68) 60%, var(--border-color));
     }
-    .fp-pwa-banner strong {
+    .orpad-pwa-banner strong {
       display: block;
       margin-bottom: 2px;
       font-size: 13px;
     }
-    .fp-pwa-banner span {
+    .orpad-pwa-banner span {
       display: block;
       color: var(--text-secondary);
       font-size: 12px;
       line-height: 1.45;
     }
-    .fp-pwa-actions {
+    .orpad-pwa-actions {
       display: flex;
       gap: 6px;
       justify-content: flex-end;
     }
-    .fp-pwa-actions button {
+    .orpad-pwa-actions button {
       padding: 7px 10px;
       border: 1px solid var(--border-color);
       border-radius: 8px;
@@ -87,25 +87,25 @@ function ensurePwaStyle() {
       font-size: 12px;
       cursor: pointer;
     }
-    .fp-pwa-actions button.primary {
+    .orpad-pwa-actions button.primary {
       border-color: var(--accent-color);
       background: var(--accent-color);
       color: var(--bg-primary);
       font-weight: 700;
     }
-    .fp-pwa-actions button:hover {
+    .orpad-pwa-actions button:hover {
       background: var(--hover-bg);
       color: var(--text-primary);
     }
-    .fp-pwa-actions button.primary:hover {
+    .orpad-pwa-actions button.primary:hover {
       filter: brightness(1.08);
       color: var(--bg-primary);
     }
     @media (max-width: 560px) {
-      .fp-pwa-banner {
+      .orpad-pwa-banner {
         grid-template-columns: 1fr;
       }
-      .fp-pwa-actions {
+      .orpad-pwa-actions {
         justify-content: flex-start;
       }
     }
@@ -126,7 +126,7 @@ function pwaRoot() {
 
 function createBanner(kind, title, message) {
   const banner = document.createElement('div');
-  banner.className = `fp-pwa-banner ${kind}`;
+  banner.className = `orpad-pwa-banner ${kind}`;
   const copy = document.createElement('div');
   const strong = document.createElement('strong');
   strong.textContent = title;
@@ -134,7 +134,7 @@ function createBanner(kind, title, message) {
   span.textContent = message;
   copy.append(strong, span);
   const actions = document.createElement('div');
-  actions.className = 'fp-pwa-actions';
+  actions.className = 'orpad-pwa-actions';
   banner.append(copy, actions);
   return { banner, actions };
 }
@@ -172,7 +172,7 @@ function registerServiceWorker() {
     wb.addEventListener('waiting', () => wb.messageSkipWaiting());
     wb.addEventListener('externalwaiting', () => wb.messageSkipWaiting());
     wb.register().catch((err) => {
-      console.warn('FormatPad service worker registration failed', err);
+      console.warn('OrPAD service worker registration failed', err);
     });
   });
 }
@@ -222,7 +222,7 @@ function installPwaPrompt(visitCount) {
 
     const built = createBanner(
       'install',
-      'Install FormatPad',
+      'Install OrPAD',
       'Add the web app to your desktop for offline launch and a focused standalone window.'
     );
     installBanner = built.banner;
@@ -258,7 +258,7 @@ function installPwaPrompt(visitCount) {
     const hint = manualInstallHint();
     if (!hint) return;
 
-    const built = createBanner('install', 'Install FormatPad', hint);
+    const built = createBanner('install', 'Install OrPAD', hint);
     manualBanner = built.banner;
     const dismiss = document.createElement('button');
     dismiss.type = 'button';
@@ -292,8 +292,8 @@ function installLaunchQueueConsumer() {
   window.launchQueue.setConsumer((launchParams) => {
     const files = Array.from(launchParams?.files || []);
     if (!files.length) return;
-    window.formatpad.openFileHandles?.(files).catch((err) => {
-      window.formatpad.showUrlError?.(err);
+    window.orpad.openFileHandles?.(files).catch((err) => {
+      window.orpad.showUrlError?.(err);
     });
   });
 }
@@ -333,17 +333,17 @@ function openSharedUrlFromLocation() {
       if (params.has('fragment')) {
         if (params === searchParams) migrateLegacyFragmentQuery(params);
         const content = decompressSharedContent(params.get('fragment'));
-        await window.formatpad.openTextFromUrl({
+        await window.orpad.openTextFromUrl({
           content,
           name: params.get('name') || 'shared.md',
           sourceUrl: window.location.href,
           source: 'fragment',
         });
       } else {
-        await window.formatpad.openUrlFromParams(params);
+        await window.orpad.openUrlFromParams(params);
       }
     } catch (err) {
-      window.formatpad.showUrlError?.(err);
+      window.orpad.showUrlError?.(err);
     }
   });
 }

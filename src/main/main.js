@@ -17,8 +17,8 @@ const watchers = new Map();
 const snippetWatchers = new Map();
 const authority = createAuthorityManager();
 
-if (!app.isPackaged && process.env.FORMATPAD_TEST_USER_DATA) {
-  app.setPath('userData', path.resolve(process.env.FORMATPAD_TEST_USER_DATA));
+if (!app.isPackaged && process.env.ORPAD_TEST_USER_DATA) {
+  app.setPath('userData', path.resolve(process.env.ORPAD_TEST_USER_DATA));
 }
 
 // --- Sentry (main process) ---
@@ -27,7 +27,7 @@ if (process.env.SENTRY_DSN) {
   const Sentry = require('@sentry/electron/main');
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    release: `formatpad@${require('../../package.json').version}`,
+    release: `orpad@${require('../../package.json').version}`,
     environment: app.isPackaged ? 'production' : 'development',
     tracesSampleRate: 0.1,
     beforeSend(event) {
@@ -43,7 +43,7 @@ if (process.env.SENTRY_DSN) {
     },
   });
 } else {
-  console.info('[FormatPad] SENTRY_DSN not set — crash reporting disabled');
+  console.info('[OrPAD] SENTRY_DSN not set — crash reporting disabled');
 }
 
 // --- Locale ---
@@ -116,7 +116,7 @@ function initLocale() {
   if (!found) {
     try {
       const { execSync } = require('child_process');
-      const out = execSync('reg query "HKLM\\Software\\FormatPad" /v Locale 2>nul', { encoding: 'utf-8' });
+      const out = execSync('reg query "HKLM\\Software\\OrPAD" /v Locale 2>nul', { encoding: 'utf-8' });
       const m = out.match(/Locale\s+REG_SZ\s+(\S+)/);
       if (m) {
         const code = resolveLocale(m[1]);
@@ -206,7 +206,7 @@ function createWindow(filePath) {
     },
     show: false,
     backgroundColor: '#1a1b26',
-    title: 'FormatPad',
+    title: 'OrPAD',
   });
   const windowId = win.id;
   const webContentsId = win.webContents.id;
@@ -340,7 +340,7 @@ function createTerminalWindow({ openerWebContents, workspaceRoot = '', cwd = '',
     },
     show: false,
     backgroundColor: '#1a1b26',
-    title: 'FormatPad Terminal',
+    title: 'OrPAD Terminal',
   });
   const webContentsId = win.webContents.id;
   const context = {
@@ -399,7 +399,7 @@ async function loadMarkdownFile(win, filePath) {
     if (win.isDestroyed()) return;
     authority.grantFile(win.webContents, resolvedPath);
     const fileName = path.basename(resolvedPath);
-    win.setTitle(fileName + ' - FormatPad');
+    win.setTitle(fileName + ' - OrPAD');
     win.webContents.send('load-markdown', {
       content,
       filePath: resolvedPath,
@@ -586,7 +586,7 @@ ipcMain.handle('save-file-as', async (event, content) => {
       const target = authority.grantFile(event.sender, result.filePath);
       await fsp.writeFile(target, content, 'utf-8');
       const fileName = path.basename(target);
-      win.setTitle(fileName + ' - FormatPad');
+      win.setTitle(fileName + ' - OrPAD');
       return target;
     } catch {
       return null;
@@ -597,7 +597,7 @@ ipcMain.handle('save-file-as', async (event, content) => {
 
 ipcMain.handle('open-default-apps-settings', async () => {
   try {
-    await shell.openExternal('ms-settings:defaultapps?registeredAppMachine=FormatPad');
+    await shell.openExternal('ms-settings:defaultapps?registeredAppMachine=OrPAD');
   } catch {
     await shell.openExternal('ms-settings:defaultapps');
   }
@@ -918,7 +918,7 @@ async function checkRecovery(win) {
             fileName: name, dirPath: data.filePath ? path.dirname(data.filePath) : null,
             savedContent,
           });
-          if (data.filePath) win.setTitle(name + ' - FormatPad');
+          if (data.filePath) win.setTitle(name + ' - OrPAD');
         }
         await fsp.unlink(fullPath).catch(() => {});
         if (response === 0) break;

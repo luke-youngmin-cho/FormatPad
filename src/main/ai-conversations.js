@@ -11,7 +11,7 @@ function requireWorkspace(workspacePath) {
 }
 
 function conversationDir(workspacePath) {
-  return path.join(requireWorkspace(workspacePath), '.formatpad', 'conversations');
+  return path.join(requireWorkspace(workspacePath), '.orpad', 'conversations');
 }
 
 function workspaceForEvent(event, workspacePath, authority) {

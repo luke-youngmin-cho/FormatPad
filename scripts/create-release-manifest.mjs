@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELEASE_DIR = path.join(ROOT, 'release');
 const PACKAGE = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
-const manifestName = String(process.env.FORMATPAD_RELEASE_MANIFEST_NAME || 'formatpad-release-manifest.json').trim();
+const manifestName = String(process.env.ORPAD_RELEASE_MANIFEST_NAME || 'orpad-release-manifest.json').trim();
 const OUT_FILE = path.join(RELEASE_DIR, manifestName);
 
 function stableStringify(value) {
@@ -17,7 +17,7 @@ function stableStringify(value) {
 
 function privateKeyObject(value) {
   const key = String(value || '').trim();
-  if (!key) throw new Error('FORMATPAD_RELEASE_SIGNING_PRIVATE_KEY is required.');
+  if (!key) throw new Error('ORPAD_RELEASE_SIGNING_PRIVATE_KEY is required.');
   if (key.includes('BEGIN PRIVATE KEY')) return crypto.createPrivateKey(key);
   return crypto.createPrivateKey({
     key: Buffer.from(key, 'base64'),
@@ -44,7 +44,7 @@ if (!installers.length) {
 
 const manifest = {
   schema: 1,
-  product: 'FormatPad',
+  product: 'OrPAD',
   version: PACKAGE.version,
   createdAt: new Date().toISOString(),
   files: installers.map((name) => {
@@ -60,7 +60,7 @@ const manifest = {
 const signature = crypto.sign(
   null,
   Buffer.from(stableStringify(manifest), 'utf-8'),
-  privateKeyObject(process.env.FORMATPAD_RELEASE_SIGNING_PRIVATE_KEY)
+  privateKeyObject(process.env.ORPAD_RELEASE_SIGNING_PRIVATE_KEY)
 ).toString('base64');
 
 fs.writeFileSync(OUT_FILE, `${JSON.stringify({

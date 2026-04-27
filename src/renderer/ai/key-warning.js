@@ -1,5 +1,5 @@
 export function confirmWebKeyStorage() {
-  if (localStorage.getItem('fp-ai-web-key-warning-ok') === '1') {
+  if (localStorage.getItem('orpad-ai-web-key-warning-ok') === '1') {
     return Promise.resolve(true);
   }
 
@@ -10,7 +10,7 @@ export function confirmWebKeyStorage() {
       <div class="ai-warning-card" role="dialog" aria-modal="true" aria-labelledby="ai-warning-title">
         <h2 id="ai-warning-title">Store API key in this browser?</h2>
         <p>
-          FormatPad Web cannot use Electron safeStorage. Your key will be stored in IndexedDB
+          OrPAD Web cannot use Electron safeStorage. Your key will be stored in IndexedDB
           for this browser profile and origin. Do not use this on a shared or untrusted device.
         </p>
         <label class="ai-warning-check">
@@ -31,7 +31,7 @@ export function confirmWebKeyStorage() {
 
     function finish(ok) {
       overlay.remove();
-      if (ok) localStorage.setItem('fp-ai-web-key-warning-ok', '1');
+      if (ok) localStorage.setItem('orpad-ai-web-key-warning-ok', '1');
       resolve(ok);
     }
 

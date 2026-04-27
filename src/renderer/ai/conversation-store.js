@@ -1,4 +1,4 @@
-const DB_NAME = 'formatpad-ai';
+const DB_NAME = 'orpad-ai';
 const DB_VERSION = 2;
 const STORE = 'conversations';
 
@@ -107,7 +107,7 @@ async function webSearch(workspacePath, query) {
 }
 
 export function createConversationStore({ getWorkspacePath }) {
-  const hasDesktopStore = !!window.formatpad?.aiConversations && window.formatpad?.platform !== 'web';
+  const hasDesktopStore = !!window.orpad?.aiConversations && window.orpad?.platform !== 'web';
 
   return {
     create(title = 'New chat') {
@@ -116,7 +116,7 @@ export function createConversationStore({ getWorkspacePath }) {
     async list() {
       const workspacePath = getWorkspacePath?.() || null;
       if (hasDesktopStore && workspacePath) {
-        const res = await window.formatpad.aiConversations.list(workspacePath);
+        const res = await window.orpad.aiConversations.list(workspacePath);
         if (!res?.error) return res.conversations || [];
       }
       return webList(workspacePath);
@@ -124,7 +124,7 @@ export function createConversationStore({ getWorkspacePath }) {
     async load(id) {
       const workspacePath = getWorkspacePath?.() || null;
       if (hasDesktopStore && workspacePath) {
-        const res = await window.formatpad.aiConversations.load(workspacePath, id);
+        const res = await window.orpad.aiConversations.load(workspacePath, id);
         if (!res?.error) return res.conversation || null;
       }
       return webLoad(workspacePath, id);
@@ -133,7 +133,7 @@ export function createConversationStore({ getWorkspacePath }) {
       const workspacePath = getWorkspacePath?.() || null;
       const normalized = normalizeConversation(conversation);
       if (hasDesktopStore && workspacePath) {
-        const res = await window.formatpad.aiConversations.save(workspacePath, normalized);
+        const res = await window.orpad.aiConversations.save(workspacePath, normalized);
         if (!res?.error) return res.conversation;
       }
       return webSave(workspacePath, normalized);
@@ -141,7 +141,7 @@ export function createConversationStore({ getWorkspacePath }) {
     async delete(id) {
       const workspacePath = getWorkspacePath?.() || null;
       if (hasDesktopStore && workspacePath) {
-        const res = await window.formatpad.aiConversations.delete(workspacePath, id);
+        const res = await window.orpad.aiConversations.delete(workspacePath, id);
         if (!res?.error) return true;
       }
       return webDelete(workspacePath, id);
@@ -149,7 +149,7 @@ export function createConversationStore({ getWorkspacePath }) {
     async search(query) {
       const workspacePath = getWorkspacePath?.() || null;
       if (hasDesktopStore && workspacePath) {
-        const res = await window.formatpad.aiConversations.search(workspacePath, query);
+        const res = await window.orpad.aiConversations.search(workspacePath, query);
         if (!res?.error) return res.conversations || [];
       }
       return webSearch(workspacePath, query);

@@ -281,8 +281,8 @@ export function applyThemeColors(colors) {
 }
 
 // ==================== Persistence ====================
-const STORAGE_THEME_ID = 'fp-theme';
-const STORAGE_CUSTOM_THEMES = 'fp-custom-themes';
+const STORAGE_THEME_ID = 'orpad-theme';
+const STORAGE_CUSTOM_THEMES = 'orpad-custom-themes';
 
 export function getSavedThemeId() {
   return localStorage.getItem(STORAGE_THEME_ID) || null;

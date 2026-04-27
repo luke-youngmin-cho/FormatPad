@@ -4,7 +4,7 @@ export default {
   description: 'Problem, users, goals, scope, risks, and open questions for a product change.',
   filename: (vars) => `prd-${vars.slug(vars.title)}.md`,
   fields: [
-    { key: 'title', label: 'Project / feature name', required: true, placeholder: 'FormatPad AI Templates' },
+    { key: 'title', label: 'Project / feature name', required: true, placeholder: 'OrPAD AI Templates' },
     { key: 'owner', label: 'Owner', placeholder: 'Product / engineering owner' },
   ],
   frontmatter: (vars) => ({

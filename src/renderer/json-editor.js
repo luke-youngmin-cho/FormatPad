@@ -69,7 +69,7 @@ export class JSONEditor {
       const node = event.target.closest('.jedit-node');
       if (!node) return;
       event.preventDefault();
-      window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', {
+      window.dispatchEvent(new CustomEvent('orpad-ai-open-actions', {
         detail: { format: 'json', scope: 'node', pointer: node.dataset.jpointer || '' },
       }));
     });

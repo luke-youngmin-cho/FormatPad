@@ -1,5 +1,5 @@
-appId: com.formatpad.app
-productName: FormatPad
+appId: com.orpad.app
+productName: OrPAD
 asar: true
 asarUnpack:
   - "node_modules/**/*.node"
@@ -35,6 +35,10 @@ files:
   - "!node_modules/**/examples/**"
   - "!node_modules/**/.github/**"
   - "!node_modules/**/*.ts"
+  - "!node_modules/**/build/**/*.iobj"
+  - "!node_modules/**/build/**/*.ipdb"
+  - "!node_modules/**/build/**/*.tlog"
+  - "!node_modules/**/build/**/*.obj"
 extraMetadata:
   main: src/main/main.js
 win:
@@ -42,7 +46,6 @@ win:
     - target: nsis
       arch:
         - x64
-        - arm64
 mac:
   target:
     - target: dmg
@@ -58,6 +61,7 @@ dmg:
   sign: false
   writeUpdateInfo: false
 nsis:
+  artifactName: "${productName}-Setup-${version}.${ext}"
   oneClick: false
   createDesktopShortcut: true
   perMachine: false
@@ -81,9 +85,9 @@ nsis:
   uninstallerIcon: assets/icon.ico
   installerHeaderIcon: assets/icon.ico
 protocols:
-  - name: FormatPad Protocol
+  - name: OrPAD Protocol
     schemes:
-      - formatpad
+      - orpad
 fileAssociations:
   - ext: md
     name: Markdown File

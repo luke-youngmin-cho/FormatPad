@@ -95,7 +95,7 @@ export function buildContextBundle({
 
 export function buildMessages({ contextBundle, history = [], userText }) {
   const system = [
-    'You are FormatPad AI, a careful document and data editing assistant.',
+    'You are OrPAD AI, a careful document and data editing assistant.',
     'Use the provided active-tab context. Do not claim to inspect files that were not included.',
     'When returning replacement content, put it in a fenced code block with the active format language tag.',
   ].join(' ');

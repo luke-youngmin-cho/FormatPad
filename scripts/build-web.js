@@ -1,17 +1,17 @@
-// Builds the FormatPad web app into docs/ (GitHub Pages target).
+// Builds the OrPAD web app into docs/ (GitHub Pages target).
 //
 // Inputs:
 //   src/web/entry.js              — installs the browser adapter then imports the renderer
 //   src/renderer/index.html       — desktop HTML shell (rewritten for web)
 //   src/renderer/styles/*.css     — style assets
-//   src/renderer/formatpad-mark.png — welcome-screen icon
+//   src/renderer/orpad-mark.png — welcome-screen icon
 //
 // Output tree in docs/:
 //   docs/index.html
 //   docs/renderer.js        (bundled JS)
 //   docs/styles/base.css
 //   docs/styles/katex.min.css
-//   docs/formatpad-mark.png
+//   docs/orpad-mark.png
 //   docs/manifest.webmanifest
 //   docs/sw.js
 //   docs/icons/*.png
@@ -59,11 +59,11 @@ function injectPwaHead(html) {
     '  <meta name="theme-color" content="#0f172a">',
     '  <meta name="apple-mobile-web-app-capable" content="yes">',
     '  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
-    '  <meta name="apple-mobile-web-app-title" content="FormatPad">',
+    '  <meta name="apple-mobile-web-app-title" content="OrPAD">',
     '  <link rel="apple-touch-icon" href="icons/icon-192.png">',
   ].join('\n');
-  if (html.includes('  <title>FormatPad</title>')) {
-    return html.replace('  <title>FormatPad</title>', `${pwaHead}\n  <title>FormatPad</title>`);
+  if (html.includes('  <title>OrPAD</title>')) {
+    return html.replace('  <title>OrPAD</title>', `${pwaHead}\n  <title>OrPAD</title>`);
   }
   return html.replace('</head>', `${pwaHead}\n</head>`);
 }
@@ -72,7 +72,7 @@ function buildIndexHtml(srcHtml) {
   let html = fs.readFileSync(srcHtml, 'utf-8');
 
   // Mirror the renderer CSP for the web build. connect-src allows https://* to
-  // support the planned P1-7 URL-open feature (formatpad.io/edit?src=<url>).
+  // support the planned P1-7 URL-open feature (orpad.io/edit?src=<url>).
   html = html.replace(
     /<meta http-equiv="Content-Security-Policy" content="[^"]+">/,
     '<meta http-equiv="Content-Security-Policy" content="' +
@@ -117,15 +117,15 @@ function copyPwaAssets() {
     : [];
 
   const sw = fs.readFileSync(path.join(ROOT, 'src/web/sw.js'), 'utf-8')
-    .replace(/__FORMATPAD_SW_VERSION__/g, PACKAGE.version)
-    .replace(/__FORMATPAD_KATEX_FONT_URLS__/g, JSON.stringify(katexFontUrls));
+    .replace(/__ORPAD_SW_VERSION__/g, PACKAGE.version)
+    .replace(/__ORPAD_KATEX_FONT_URLS__/g, JSON.stringify(katexFontUrls));
   fs.writeFileSync(path.join(OUT, 'sw.js'), sw, 'utf-8');
 }
 
 async function main() {
   const minify = process.argv.includes('--minify');
 
-  console.log('FormatPad web build → ' + path.relative(ROOT, OUT));
+  console.log('OrPAD web build → ' + path.relative(ROOT, OUT));
   emptyDir(OUT);
 
   // Bundle the renderer + adapter.
@@ -158,7 +158,7 @@ async function main() {
     }],
     define: {
       'process.env.NODE_ENV': minify ? '"production"' : '"development"',
-      'process.env.FORMATPAD_WEB': '"true"',
+      'process.env.ORPAD_WEB': '"true"',
       'process.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN || ''),
       'process.env.PLAUSIBLE_DOMAIN': JSON.stringify(process.env.PLAUSIBLE_DOMAIN || ''),
       'process.env.APP_VERSION': JSON.stringify(PACKAGE.version),
@@ -186,8 +186,8 @@ async function main() {
 
   // Welcome icon
   copyFile(
-    path.join(ROOT, 'src/renderer/formatpad-mark.png'),
-    path.join(OUT, 'formatpad-mark.png')
+    path.join(ROOT, 'src/renderer/orpad-mark.png'),
+    path.join(OUT, 'orpad-mark.png')
   );
 
   // PWA assets
@@ -198,7 +198,7 @@ async function main() {
 
   const sizeKb = (fs.statSync(path.join(OUT, 'renderer.js')).size / 1024).toFixed(0);
   console.log(`  renderer.js  ${sizeKb} KB${minify ? ' (minified)' : ''}`);
-  console.log('FormatPad web build complete.');
+  console.log('OrPAD web build complete.');
 }
 
 main().catch((err) => {

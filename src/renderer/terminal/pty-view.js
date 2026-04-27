@@ -8,7 +8,7 @@ import xtermCss from '@xterm/xterm/css/xterm.css';
 import { t } from '../i18n.js';
 
 const MAX_BLOCK_CHARS = 240_000;
-const LAST_SHELL_KEY = 'fp-terminal-last-shell';
+const LAST_SHELL_KEY = 'orpad-terminal-last-shell';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -26,9 +26,9 @@ function fmt(key, vars = {}) {
 }
 
 function ensureXtermCss() {
-  if (document.getElementById('formatpad-xterm-css')) return;
+  if (document.getElementById('orpad-xterm-css')) return;
   const style = document.createElement('style');
-  style.id = 'formatpad-xterm-css';
+  style.id = 'orpad-xterm-css';
   style.textContent = xtermCss;
   document.head.appendChild(style);
 }
@@ -146,7 +146,7 @@ function blockMarkdown(block) {
 }
 
 function dispatchTerminalOutput(block) {
-  window.dispatchEvent(new CustomEvent('formatpad-runner-output', {
+  window.dispatchEvent(new CustomEvent('orpad-runner-output', {
     detail: {
       runId: block.id,
       source: 'terminal',
@@ -187,7 +187,7 @@ function startCommandBlock(session, commandLine, provisional = false) {
   const actions = [
     [t('terminal.action.copy'), async () => navigator.clipboard.writeText(stripAnsi(block.output || ''))],
     [t('terminal.action.askAi'), () => {
-      window.dispatchEvent(new CustomEvent('formatpad-ai-prefill', {
+      window.dispatchEvent(new CustomEvent('orpad-ai-prefill', {
         detail: { text: `<terminal_output>\n${stripAnsi(block.output || '')}\n</terminal_output>\n\nExplain this terminal output:` },
       }));
     }],
@@ -236,7 +236,7 @@ function finishCommandBlock(session, exitCode) {
     explain.type = 'button';
     explain.addEventListener('click', (event) => {
       event.stopPropagation();
-      window.dispatchEvent(new CustomEvent('formatpad-ai-prefill', {
+      window.dispatchEvent(new CustomEvent('orpad-ai-prefill', {
         detail: {
           text: `<terminal_error command="${block.commandLine || ''}" exit="${block.exitCode ?? ''}">\n${stripAnsi(block.output || '')}\n</terminal_error>\n\nExplain the failure and suggest the safest next command.`,
         },

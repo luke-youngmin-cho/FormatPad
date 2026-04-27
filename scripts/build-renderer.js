@@ -15,7 +15,7 @@ const common = {
   loader: { '.css': 'text' },
   define: {
     'process.env.NODE_ENV': '"production"',
-    'process.env.FORMATPAD_WEB': '"false"',
+    'process.env.ORPAD_WEB': '"false"',
     'process.env.PLAUSIBLE_DOMAIN': JSON.stringify(process.env.PLAUSIBLE_DOMAIN || ''),
     'process.env.APP_VERSION': JSON.stringify(require('../package.json').version),
   },
@@ -43,7 +43,7 @@ Promise.all([
     outfile: path.join(distDir, 'terminal-window.js'),
   }),
 ]).then(() => {
-  console.log('FormatPad renderer bundled successfully.');
+  console.log('OrPAD renderer bundled successfully.');
 }).catch((err) => {
   console.error(err);
   process.exit(1);

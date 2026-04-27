@@ -10,7 +10,7 @@ test('recovery file is written for unsaved changes', async () => {
 
   // Trigger the recovery-save IPC path (simulates the 30 s auto-save timer)
   await win.evaluate(async () => {
-    await window.formatpad.autoSaveRecovery(null, '# Recovery smoke test\n\nUnsaved content.');
+    await window.orpad.autoSaveRecovery(null, '# Recovery smoke test\n\nUnsaved content.');
   });
 
   // Get userData path from main process (no require needed in evaluate body)

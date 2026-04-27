@@ -34,19 +34,19 @@ function killProcessTree(pid?: number): void {
 }
 
 export async function launchElectron(extraArgs: string[] = []): Promise<ElectronApplication> {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'formatpad-e2e-'));
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orpad-e2e-'));
   const app = await electron.launch({
     args: ['.', ...extraArgs],
     cwd: process.cwd(),
     env: {
       ...process.env,
-      FORMATPAD_TEST_USER_DATA: userDataDir,
+      ORPAD_TEST_USER_DATA: userDataDir,
     },
   });
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   await win.waitForSelector('.cm-editor', { timeout: 10000 });
-  await win.waitForFunction(() => !!(window as any).formatpadCommands?.runCommand, null, { timeout: 10000 });
+  await win.waitForFunction(() => !!(window as any).orpadCommands?.runCommand, null, { timeout: 10000 });
   const close = app.close.bind(app);
   app.close = async () => {
     const child = app.process();

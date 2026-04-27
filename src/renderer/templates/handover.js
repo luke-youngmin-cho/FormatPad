@@ -4,7 +4,7 @@ export default {
   description: 'Session summary for passing context to the next person or AI conversation.',
   filename: (vars) => `handover-${new Date().toISOString().slice(0, 10)}-${vars.slug(vars.title || 'session')}.md`,
   fields: [
-    { key: 'title', label: 'Session / project name', required: true, placeholder: 'FormatPad release prep' },
+    { key: 'title', label: 'Session / project name', required: true, placeholder: 'OrPAD release prep' },
     { key: 'owner', label: 'Author', placeholder: 'Name or role' },
   ],
   frontmatter: (vars) => ({

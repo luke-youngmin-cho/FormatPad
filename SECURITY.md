@@ -1,4 +1,4 @@
-# FormatPad Security Baseline
+# OrPAD Security Baseline
 
 _Generated during P0-10 security scan on 2026-04-24. Updated through P1-5 template work. Re-run on every major release._
 
@@ -17,14 +17,14 @@ process is fully sandboxed with no direct Node.js access.
 
 **Window opening:** `setWindowOpenHandler` returns `{ action: 'deny' }` for every request; http/https URLs are passed to `shell.openExternal` (the OS browser). Both `http://` and `https://` are forwarded. See Follow-ups #2.
 
-**preload.js — contextBridge surface** (`window.formatpad`):
+**preload.js — contextBridge surface** (`window.orpad`):
 
 | Method | Proxies to | Risk class |
 |--------|-----------|------------|
 | `platform` | `process.platform` (static) | LOW |
 | `getAppInfo()` | `get-app-info` — returns version + isPackaged | LOW |
 | `aiKeys.status()` / `set()` / `getDecrypted()` / `remove()` | `safeStorage` encrypted provider keys | MEDIUM (secret broker) |
-| `aiConversations.*` | `.formatpad/conversations/*.json` inside selected workspace | MEDIUM |
+| `aiConversations.*` | `.orpad/conversations/*.json` inside selected workspace | MEDIUM |
 | `getSystemTheme()` | `get-system-theme` | LOW |
 | `openFileDialog()` | `open-file-dialog` — shows native file picker | LOW |
 | `saveFile(filePath, content)` | `save-file` — writes to filePath | MEDIUM (see IPC handlers) |
@@ -137,33 +137,33 @@ the web host (Follow-up #4).
 
 ## localStorage / IndexedDB surface
 
-All keys use the `fp-` prefix convention. Inventory as of P0-10:
+All keys use the `orpad-` prefix convention. Inventory as of P0-10:
 
 | Key | What it stores | Contains secret/PII? | Encrypted? |
 |-----|---------------|---------------------|-----------|
-| `fp-workspace-path` | Last opened folder path | No | No |
-| `fp-zoom` | Zoom level 0–200% | No | No |
-| `fp-mmd-theme` | Mermaid diagram theme name | No | No |
-| `fp-diff-pretty` | Diff mode flag | No | No |
-| `fp-diff-other` | Right-pane diff text | No (document content only) | No |
-| `fp-sidebar-visible` | Sidebar open/closed | No | No |
-| `fp-sidebar-width` | Sidebar width in pixels | No | No |
-| `fp-sidebar-panel` | Active sidebar panel | No | No |
-| `fp-ai-sidebar-visible` | AI sidebar open/closed | No | No |
-| `fp-ai-sidebar-width` | AI sidebar width in pixels | No | No |
-| `fp-ai-provider` | Selected AI provider id | No | No |
-| `fp-ai-model-*` | Selected AI model id per provider | No | No |
-| `fp-ai-endpoint-*` | User-configured AI endpoint URL | No | No |
-| `fp-ai-include-tabs` / `fp-ai-include-tree` | AI context toggles | No | No |
-| `fp-ai-web-key-warning-ok` | Web key-storage warning acknowledgement | No | No |
-| `fp-view-mode` | Editor/split/preview mode | No | No |
-| `fp-divider-ratio` | Editor/preview split ratio | No | No |
-| `fp-locale` | UI language code | No | No |
-| `fp-locale-mtime` | Locale file mtime | No | No |
-| `fp-last-schema` | Last JSON schema text | No (user JSON schema) | No |
-| `fp-search-exts` | Selected search file extensions | No | No |
-| `fp-toc-visible` | TOC legacy flag | No | No |
-| `fp-first-run` | First-run sentinel | No | No |
+| `orpad-workspace-path` | Last opened folder path | No | No |
+| `orpad-zoom` | Zoom level 0–200% | No | No |
+| `orpad-mmd-theme` | Mermaid diagram theme name | No | No |
+| `orpad-diff-pretty` | Diff mode flag | No | No |
+| `orpad-diff-other` | Right-pane diff text | No (document content only) | No |
+| `orpad-sidebar-visible` | Sidebar open/closed | No | No |
+| `orpad-sidebar-width` | Sidebar width in pixels | No | No |
+| `orpad-sidebar-panel` | Active sidebar panel | No | No |
+| `orpad-ai-sidebar-visible` | AI sidebar open/closed | No | No |
+| `orpad-ai-sidebar-width` | AI sidebar width in pixels | No | No |
+| `orpad-ai-provider` | Selected AI provider id | No | No |
+| `orpad-ai-model-*` | Selected AI model id per provider | No | No |
+| `orpad-ai-endpoint-*` | User-configured AI endpoint URL | No | No |
+| `orpad-ai-include-tabs` / `orpad-ai-include-tree` | AI context toggles | No | No |
+| `orpad-ai-web-key-warning-ok` | Web key-storage warning acknowledgement | No | No |
+| `orpad-view-mode` | Editor/split/preview mode | No | No |
+| `orpad-divider-ratio` | Editor/preview split ratio | No | No |
+| `orpad-locale` | UI language code | No | No |
+| `orpad-locale-mtime` | Locale file mtime | No | No |
+| `orpad-last-schema` | Last JSON schema text | No (user JSON schema) | No |
+| `orpad-search-exts` | Selected search file extensions | No | No |
+| `orpad-toc-visible` | TOC legacy flag | No | No |
+| `orpad-first-run` | First-run sentinel | No | No |
 | `theme-id` | Active theme ID | No | No |
 | `custom-themes` | Custom theme JSON blob | No | No |
 | `sentry-opt-out` | Crash reporting opt-out flag | No | No |
@@ -181,8 +181,8 @@ All keys use the `fp-` prefix convention. Inventory as of P0-10:
 - The settings UI stores/display masks only (`sk-****last4`) and never logs raw keys.
 
 **P1-1 conversation storage:** Desktop conversations are stored per workspace under
-`.formatpad/conversations/*.json` with path normalization that keeps writes inside that
-subdirectory. Web/untitled conversations use IndexedDB (`formatpad-ai`, store
+`.orpad/conversations/*.json` with path normalization that keeps writes inside that
+subdirectory. Web/untitled conversations use IndexedDB (`orpad-ai`, store
 `conversations`).
 
 **P1-3 MCP storage:** Desktop MCP server config and persisted read-only tool permissions live
@@ -264,7 +264,7 @@ powerful than Command Runner and should be treated like an embedded VS Code term
   including `cd`, just like any local terminal.
 - The inherited environment is filtered before shell spawn using the same `SENTRY_DSN`,
   `GITHUB_TOKEN`, `PASSWORD`, `*_KEY`, `*_TOKEN`, and `*_SECRET` rules as Command Runner.
-- PowerShell starts with `-NoProfile`; bash and zsh use FormatPad-owned init files for OSC 633
+- PowerShell starts with `-NoProfile`; bash and zsh use OrPAD-owned init files for OSC 633
   shell integration. This avoids loading user profile scripts for the integration path.
 - OSC 633 command boundaries are parsed in the renderer to create transient command blocks.
   Output and scrollback are not written to disk.
@@ -277,9 +277,9 @@ powerful than Command Runner and should be treated like an embedded VS Code term
 **Implemented protections:**
 - All renderer navigations blocked by `will-navigate` handler.
 - `setWindowOpenHandler` forwards http/https to the OS browser — no inline rendering of external URLs.
-- The auto-updater fetches only from `https://api.github.com/repos/luke-youngmin-cho/FormatPad/releases/latest` (hardcoded HTTPS, no user-configurable endpoint). Response is parsed as JSON with no eval.
+- The auto-updater fetches only from `https://api.github.com/repos/luke-youngmin-cho/OrPAD/releases?per_page=20` (hardcoded HTTPS, no user-configurable endpoint). Response is parsed as JSON with no eval.
 - Auto-install is fail-closed: installers are opened only after a signed Ed25519 release manifest verifies with the updater public key baked into the app, and the downloaded installer SHA-256/size matches the signed manifest entry. Missing public key, missing manifest, invalid signature, or checksum mismatch disables auto-install and leaves only the manual release-page path.
-- Release signing uses `FORMATPAD_RELEASE_SIGNING_PRIVATE_KEY` in CI to create `formatpad-release-manifest-<platform>.json`; app builds use `FORMATPAD_UPDATER_PUBLIC_KEY` to embed the matching public key.
+- Release signing uses `ORPAD_RELEASE_SIGNING_PRIVATE_KEY` in CI to create `orpad-release-manifest-<platform>.json`; app builds use `ORPAD_UPDATER_PUBLIC_KEY` to embed the matching public key.
 
 **Policy for P1-7 (GitHub / Gist URL drop — not yet built):**
 - Only HTTPS URLs accepted. `http://` must be rejected with a user-visible warning.
@@ -301,7 +301,7 @@ features that intentionally launch configured/user-requested child processes.
 | `ai-key-remove` | handle | Delete provider API key | ??| userData only |
 | `ai-provider-chat` | handle | Main-process AI provider proxy using stored keys | reads `event.sender` | No plaintext key returned |
 | `ai-provider-cancel` | handle | Cancel a main-process AI provider request | reads `event.sender` | Sender-owned request only |
-| `ai-conversations-list` | handle | List `.formatpad/conversations` summaries | ??| Workspace subdir guard |
+| `ai-conversations-list` | handle | List `.orpad/conversations` summaries | ??| Workspace subdir guard |
 | `ai-conversation-load` | handle | Load one conversation JSON | ??| Workspace subdir guard |
 | `ai-conversation-save` | handle | Save one conversation JSON | ??| Workspace subdir guard |
 | `ai-conversation-delete` | handle | Delete one conversation JSON | ??| Workspace subdir guard |
@@ -402,7 +402,7 @@ should be evaluated before final public release. Tracked as Follow-up #10.
 
 **Triage:**
 - The uuid buffer-bounds check issue (GHSA-w5hq-g745-h8pq) only manifests when an optional
-  second `buf` argument is passed with a length < 16 bytes. FormatPad does not call uuid
+  second `buf` argument is passed with a length < 16 bytes. OrPAD does not call uuid
   directly; it is a transitive dep of mermaid. Severity: **moderate**, exploitability: low
   (no user-supplied buf argument in the call path).
 - Fixing requires downgrading mermaid to 9.1.7 (breaking), which would lose diagram features.

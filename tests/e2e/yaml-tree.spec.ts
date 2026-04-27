@@ -8,7 +8,7 @@ test('YAML file displays tree view with nested keys', async () => {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // YAML uses the same JSON-editor tree renderer
   await expect(win.locator('.jedit-tree')).toBeVisible({ timeout: 8000 });

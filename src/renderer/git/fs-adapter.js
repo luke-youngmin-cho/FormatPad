@@ -85,7 +85,7 @@ function bridgeFs(api) {
         throw notFound(path);
       },
       async symlink() {
-        const err = new Error('Symlink is not supported by FormatPad git fs');
+        const err = new Error('Symlink is not supported by OrPAD git fs');
         err.code = 'ENOSYS';
         throw err;
       },
@@ -95,11 +95,11 @@ function bridgeFs(api) {
 
 export async function getFs() {
   if (cachedFs) return cachedFs;
-  if (window.formatpad?.gitFs) {
-    cachedFs = bridgeFs(window.formatpad.gitFs);
+  if (window.orpad?.gitFs) {
+    cachedFs = bridgeFs(window.orpad.gitFs);
     return cachedFs;
   }
-  const fs = new LightningFS('formatpad-git-cache', { wipe: false });
+  const fs = new LightningFS('orpad-git-cache', { wipe: false });
   cachedFs = fs;
   return cachedFs;
 }

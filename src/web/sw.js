@@ -1,9 +1,9 @@
-const FORMATPAD_SW_VERSION = '__FORMATPAD_SW_VERSION__';
-const KATEX_FONT_URLS = __FORMATPAD_KATEX_FONT_URLS__;
+const ORPAD_SW_VERSION = '__ORPAD_SW_VERSION__';
+const KATEX_FONT_URLS = __ORPAD_KATEX_FONT_URLS__;
 
-const APP_SHELL_CACHE = `formatpad-app-shell-${FORMATPAD_SW_VERSION}`;
-const RUNTIME_CACHE = `formatpad-runtime-${FORMATPAD_SW_VERSION}`;
-const GITHUB_API_CACHE = `formatpad-github-api-${FORMATPAD_SW_VERSION}`;
+const APP_SHELL_CACHE = `orpad-app-shell-${ORPAD_SW_VERSION}`;
+const RUNTIME_CACHE = `orpad-runtime-${ORPAD_SW_VERSION}`;
+const GITHUB_API_CACHE = `orpad-github-api-${ORPAD_SW_VERSION}`;
 const CURRENT_CACHES = new Set([
   APP_SHELL_CACHE,
   RUNTIME_CACHE,
@@ -16,7 +16,7 @@ const APP_SHELL_URLS = [
   'renderer.js',
   'styles/base.css',
   'styles/katex.min.css',
-  'formatpad-mark.png',
+  'orpad-mark.png',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -29,7 +29,7 @@ const APP_SHELL_SUFFIXES = [
   '/renderer.js',
   '/styles/base.css',
   '/styles/katex.min.css',
-  '/formatpad-mark.png',
+  '/orpad-mark.png',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -49,7 +49,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(keys.map((key) => {
-        if (key.startsWith('formatpad-') && !CURRENT_CACHES.has(key)) {
+        if (key.startsWith('orpad-') && !CURRENT_CACHES.has(key)) {
           return caches.delete(key);
         }
         return undefined;

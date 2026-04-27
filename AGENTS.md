@@ -1,8 +1,8 @@
-# FormatPad Agent Guide
+# OrPAD Agent Guide
 
 This project is being transitioned from an old autonomous Claude harness to
-supervised Codex work. Treat `../FormatPadHarness` as the task ledger and prompt
-source, not as an execution engine.
+supervised Codex work. Treat the sibling harness directory as the task ledger
+and prompt source, not as an execution engine.
 
 ## Layout
 
@@ -39,8 +39,8 @@ source, not as an execution engine.
 
 ## Done Criteria
 
-- Match the active task brief from `../FormatPadHarness/tasks/`.
+- Match the active task brief from the harness task ledger.
 - Run relevant verification or explicitly document why it was not run.
-- Update the matching `../FormatPadHarness/state/summaries/<TASK>.summary.md`.
+- Update the matching harness task summary.
 - End the summary with `## Status: done`, `## Status: partial`, or
   `## Status: blocked`.

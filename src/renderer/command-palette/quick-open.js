@@ -3,7 +3,7 @@ import { scoreFuzzy } from './palette.js';
 const OWNER = 'quick-open';
 const MAX_VISIBLE = 50;
 const PREVIEW_LINES = 30;
-const RECENT_KEY = 'fp-quick-open-recent';
+const RECENT_KEY = 'orpad-quick-open-recent';
 
 const FORMAT_ALIASES = {
   md: 'markdown',
@@ -368,7 +368,7 @@ export function createQuickOpen({ root, getFiles, readFile, openFile, getWorkspa
   }
 
   function open(initialQuery = '') {
-    window.dispatchEvent(new CustomEvent('formatpad-overlay-open', { detail: { owner: OWNER } }));
+    window.dispatchEvent(new CustomEvent('orpad-overlay-open', { detail: { owner: OWNER } }));
     lastFocus = document.activeElement;
     overlay.classList.remove('hidden');
     input.value = initialQuery;
@@ -411,7 +411,7 @@ export function createQuickOpen({ root, getFiles, readFile, openFile, getWorkspa
   overlay.addEventListener('mousedown', (event) => {
     if (event.target === overlay) close();
   });
-  window.addEventListener('formatpad-overlay-open', (event) => {
+  window.addEventListener('orpad-overlay-open', (event) => {
     if (event.detail?.owner !== OWNER) close();
   });
 

@@ -15,7 +15,7 @@ test('markdown-perf: AST cache hits during undo and Mermaid debounce do not bloc
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // Wait for initial render of the large file to settle
   await win.waitForTimeout(1500);

@@ -231,8 +231,8 @@ const backlinksContentEl = document.getElementById('backlinks-content');
 // a clear error when Open Folder is clicked there. Only UI whose backing
 // behavior cannot exist on the web at all (OS default-app registration,
 // reveal-in-explorer, auto-updater) is hidden here.
-const IS_WEB = window.formatpad?.platform === 'web';
-const BUILD_TARGET_WEB = process.env.FORMATPAD_WEB === 'true';
+const IS_WEB = window.orpad?.platform === 'web';
+const BUILD_TARGET_WEB = process.env.ORPAD_WEB === 'true';
 if (IS_WEB) {
   const hideIds = ['btn-set-default', 'ctx-reveal', 'tctx-reveal'];
   hideIds.forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = true; });
@@ -307,8 +307,8 @@ function trackTabCountThrottled() {
 }
 
 // Web beforeunload guard — the adapter installs the listener, we supply the predicate.
-if (IS_WEB && typeof window.formatpad.__setDirtyProbe === 'function') {
-  window.formatpad.__setDirtyProbe(() => tabs.some((tb) => tb.isModified));
+if (IS_WEB && typeof window.orpad.__setDirtyProbe === 'function') {
+  window.orpad.__setDirtyProbe(() => tabs.some((tb) => tb.isModified));
 }
 
 function getRecoveryKey(tab) {
@@ -339,7 +339,7 @@ let sidebarVisible = true;
 let sidebarActivePanel = 'files';
 
 // Workspace/file tree state
-let workspacePath = localStorage.getItem('fp-workspace-path') || null;
+let workspacePath = localStorage.getItem('orpad-workspace-path') || null;
 const expandedPaths = new Set();
 let fileTreeCache = [];
 let gitRepoState = { isRepo: false, statuses: new Map(), branch: null, ahead: null, behind: null, slow: false };
@@ -364,7 +364,7 @@ const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 10;
 const ZOOM_DEFAULT = 100;
-let zoomLevel = parseInt(localStorage.getItem('fp-zoom'), 10) || ZOOM_DEFAULT;
+let zoomLevel = parseInt(localStorage.getItem('orpad-zoom'), 10) || ZOOM_DEFAULT;
 
 function applyZoom(level) {
   zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
@@ -377,7 +377,7 @@ function applyZoom(level) {
   // wrap. Stick to font-size scaling only — images/SVGs don't grow with zoom now,
   // but text reflows correctly at every zoom level.
   contentEl.style.zoom = '';
-  localStorage.setItem('fp-zoom', zoomLevel);
+  localStorage.setItem('orpad-zoom', zoomLevel);
   statusZoomEl.textContent = zoomLevel + '%';
 }
 
@@ -420,7 +420,7 @@ document.addEventListener('wheel', (e) => {
 statusZoomEl.addEventListener('click', () => applyZoom(ZOOM_DEFAULT));
 
 // ==================== Theme ====================
-let currentThemeId = getSavedThemeId() || (window.formatpad?.getSystemTheme ? null : 'tokyo-night');
+let currentThemeId = getSavedThemeId() || (window.orpad?.getSystemTheme ? null : 'tokyo-night');
 let editingCustomId = null;
 
 function getThemeById(id) {
@@ -432,7 +432,7 @@ function getThemeById(id) {
 
 async function initTheme() {
   if (!currentThemeId) {
-    const sys = await window.formatpad.getSystemTheme();
+    const sys = await window.orpad.getSystemTheme();
     currentThemeId = 'tokyo-night';
   }
   const theme = getThemeById(currentThemeId);
@@ -612,7 +612,7 @@ let cachedFileNames = [];
 async function refreshFileNameCache() {
   if (!workspacePath) { cachedFileNames = []; return; }
   try {
-    const names = await window.formatpad.getFileNames(workspacePath);
+    const names = await window.orpad.getFileNames(workspacePath);
     cachedFileNames = names.map(n => n.baseName);
   } catch { cachedFileNames = []; }
 }
@@ -654,7 +654,7 @@ function workspaceSnippetPaths() {
   if (!workspacePath) return null;
   const sep = workspacePath.includes('\\') ? '\\' : '/';
   const root = workspacePath.replace(/[\\/]+$/, '');
-  const folder = root + sep + '.formatpad';
+  const folder = root + sep + '.orpad';
   return { folder, file: folder + sep + 'snippets.json' };
 }
 
@@ -666,19 +666,19 @@ function isUserSnippetPath(filePath) {
 async function readWorkspaceSnippets() {
   const paths = workspaceSnippetPaths();
   if (!paths) return null;
-  const result = await window.formatpad.readFile(paths.file);
+  const result = await window.orpad.readFile(paths.file);
   if (result?.error) return null;
   return { ...result, source: 'workspace' };
 }
 
 async function readFallbackSnippets() {
-  if (window.formatpad.userSnippets?.read) {
-    const result = await window.formatpad.userSnippets.read();
+  if (window.orpad.userSnippets?.read) {
+    const result = await window.orpad.userSnippets.read();
     if (!result?.error) return { ...result, source: 'userData' };
   }
-  const raw = localStorage.getItem('fp-user-snippets');
+  const raw = localStorage.getItem('orpad-user-snippets');
   return {
-    filePath: 'localStorage:fp-user-snippets',
+    filePath: 'localStorage:orpad-user-snippets',
     dirPath: null,
     content: raw || '{}',
     source: 'localStorage',
@@ -706,12 +706,12 @@ function scheduleSnippetRefresh(delay = 250) {
 async function ensureWorkspaceSnippetFile() {
   const paths = workspaceSnippetPaths();
   if (!paths) return null;
-  await window.formatpad.createFolder(paths.folder).catch(() => {});
-  let result = await window.formatpad.readFile(paths.file);
+  await window.orpad.createFolder(paths.folder).catch(() => {});
+  let result = await window.orpad.readFile(paths.file);
   if (result?.error) {
-    await window.formatpad.createFile(paths.file).catch(() => {});
-    await window.formatpad.saveFile(paths.file, DEFAULT_USER_SNIPPETS).catch(() => {});
-    result = await window.formatpad.readFile(paths.file);
+    await window.orpad.createFile(paths.file).catch(() => {});
+    await window.orpad.saveFile(paths.file, DEFAULT_USER_SNIPPETS).catch(() => {});
+    result = await window.orpad.readFile(paths.file);
   }
   return {
     filePath: paths.file,
@@ -725,12 +725,12 @@ async function editUserSnippets() {
   let target = null;
   if (workspacePath) {
     target = await ensureWorkspaceSnippetFile();
-  } else if (window.formatpad.userSnippets?.ensure) {
-    const result = await window.formatpad.userSnippets.ensure();
+  } else if (window.orpad.userSnippets?.ensure) {
+    const result = await window.orpad.userSnippets.ensure();
     if (!result?.error) target = { ...result, savedContent: result.content };
   } else {
-    const content = localStorage.getItem('fp-user-snippets') || DEFAULT_USER_SNIPPETS;
-    target = { filePath: 'localStorage:fp-user-snippets', dirPath: null, content, savedContent: content, title: 'snippets.json' };
+    const content = localStorage.getItem('orpad-user-snippets') || DEFAULT_USER_SNIPPETS;
+    target = { filePath: 'localStorage:orpad-user-snippets', dirPath: null, content, savedContent: content, title: 'snippets.json' };
   }
   if (!target) return;
   userSnippetsPath = target.filePath || userSnippetsPath;
@@ -900,14 +900,14 @@ const minimapExtension = ViewPlugin.fromClass(class {
     this.view = view;
     this.raf = 0;
     this.dom = document.createElement('div');
-    this.dom.className = 'fp-minimap';
+    this.dom.className = 'orpad-minimap';
     this.dom.title = 'Click to jump in the document';
     this.canvas = document.createElement('canvas');
-    this.canvas.className = 'fp-minimap-canvas';
+    this.canvas.className = 'orpad-minimap-canvas';
     this.dom.appendChild(this.canvas);
     this.onPointerDown = (event) => this.jump(event);
     this.dom.addEventListener('pointerdown', this.onPointerDown);
-    this.view.dom.classList.add('fp-minimap-enabled');
+    this.view.dom.classList.add('orpad-minimap-enabled');
     this.view.dom.appendChild(this.dom);
     this.scheduleRender();
   }
@@ -995,7 +995,7 @@ const minimapExtension = ViewPlugin.fromClass(class {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.dom.removeEventListener('pointerdown', this.onPointerDown);
     this.dom.remove();
-    this.view.dom.classList.remove('fp-minimap-enabled');
+    this.view.dom.classList.remove('orpad-minimap-enabled');
   }
 });
 
@@ -1058,7 +1058,7 @@ function createEditorState(content, viewType = 'markdown') {
       gitHunkGutter,
       EditorView.domEventHandlers({
         drop(e) {
-          const linkName = e.dataTransfer.getData('application/x-fp-link');
+          const linkName = e.dataTransfer.getData('application/x-orpad-link');
           if (!linkName) return false;
           e.preventDefault();
           const pos = editor.posAtCoords({ x: e.clientX, y: e.clientY });
@@ -1070,7 +1070,7 @@ function createEditorState(content, viewType = 'markdown') {
           return true;
         },
         dragover(e) {
-          if (e.dataTransfer.types.includes('application/x-fp-link')) {
+          if (e.dataTransfer.types.includes('application/x-orpad-link')) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
             return true;
@@ -1105,7 +1105,7 @@ const editor = new EditorView({
 });
 document.getElementById('editor').addEventListener('contextmenu', () => {
   if (getActiveTab()?.viewType === 'markdown') {
-    window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', { detail: { format: 'markdown', scope: getEditorSelectionText() ? 'selection' : 'document' } }));
+    window.dispatchEvent(new CustomEvent('orpad-ai-open-actions', { detail: { format: 'markdown', scope: getEditorSelectionText() ? 'selection' : 'document' } }));
   }
 });
 
@@ -1486,17 +1486,17 @@ async function closeTab(tabId) {
 
   if (tab.isModified) {
     if (activeTabId !== tabId) switchToTab(tabId);
-    const result = await window.formatpad.showSaveDialog();
+    const result = await window.orpad.showSaveDialog();
     if (result === 'save') {
       await saveFile();
       if (getActiveTab()?.isModified) return;
     } else if (result === 'cancel') {
       return;
     } else {
-      window.formatpad.clearRecovery(getRecoveryKey(tab));
+      window.orpad.clearRecovery(getRecoveryKey(tab));
     }
   } else {
-    window.formatpad.clearRecovery(getRecoveryKey(tab));
+    window.orpad.clearRecovery(getRecoveryKey(tab));
   }
 
   const durationSec = (Date.now() - (tab.openedAt || Date.now())) / 1000;
@@ -1653,7 +1653,7 @@ document.getElementById('tctx-pin').addEventListener('click', () => {
 });
 document.getElementById('tctx-reveal').addEventListener('click', () => {
   const tab = tabs.find(tb => tb.id === tabContextTargetId);
-  if (tab?.filePath) window.formatpad.revealInExplorer(tab.filePath);
+  if (tab?.filePath) window.orpad.revealInExplorer(tab.filePath);
 });
 
 // ==================== Editor change handling ====================
@@ -1686,7 +1686,7 @@ function updateTitle() {
     fileInfoEl.textContent = '';
     fileInfoEl.title = '';
     renderTemplateStatusChip();
-    window.formatpad.setTitle('FormatPad');
+    window.orpad.setTitle('OrPAD');
     return;
   }
   const name = getTabDisplayName(tab);
@@ -1694,7 +1694,7 @@ function updateTitle() {
   fileInfoEl.textContent = (tab.isModified ? '* ' : '') + name + sourceLabel;
   fileInfoEl.title = tab.sourceUrl || tab.filePath || '';
   renderTemplateStatusChip();
-  window.formatpad.setTitle((tab.isModified ? '* ' : '') + name + ' - FormatPad');
+  window.orpad.setTitle((tab.isModified ? '* ' : '') + name + ' - OrPAD');
 }
 
 function showSaveFlash() {
@@ -1729,7 +1729,7 @@ function openTemplateStatusPopover(analysis) {
     row.innerHTML = `<span>${missing ? '!' : '✓'}</span><strong>${section}</strong><small>${missing ? 'Needs content' : 'Looks filled'}</small>`;
     row.addEventListener('click', () => {
       closeFmtModal();
-      window.dispatchEvent(new CustomEvent('formatpad-ai-fill-template-section', { detail: { section } }));
+      window.dispatchEvent(new CustomEvent('orpad-ai-fill-template-section', { detail: { section } }));
     });
     list.appendChild(row);
   }
@@ -1752,7 +1752,7 @@ function openTemplateStatusPopover(analysis) {
     handover.textContent = 'Load into next AI chat';
     handover.addEventListener('click', () => {
       closeFmtModal();
-      window.dispatchEvent(new CustomEvent('formatpad-ai-load-handover', {
+      window.dispatchEvent(new CustomEvent('orpad-ai-load-handover', {
         detail: { content: editor.state.doc.toString() },
       }));
     });
@@ -1769,7 +1769,7 @@ function openTemplateStatusPopover(analysis) {
         primary: true,
         onClick: () => {
           closeFmtModal();
-          window.dispatchEvent(new CustomEvent('formatpad-ai-complete-template', {
+          window.dispatchEvent(new CustomEvent('orpad-ai-complete-template', {
             detail: { sections: analysis.missingSections },
           }));
         },
@@ -1856,7 +1856,7 @@ let currentDiffPanel = null; // { el, recompute } — valid while diff panel is 
 // Set when the left diff textarea echoes into CodeMirror — the debounced renderPreview
 // would otherwise trigger a second recompute for the same keystroke.
 let suppressNextDiffRecompute = false;
-let mmdTheme = localStorage.getItem('fp-mmd-theme') || 'dark';
+let mmdTheme = localStorage.getItem('orpad-mmd-theme') || 'dark';
 
 function updateFormatBar(viewType) {
   const bar = document.getElementById('format-bar');
@@ -1941,7 +1941,7 @@ function renderPreview(content) {
       heading.title = 'Right-click to ask AI to fill this section';
       heading.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent('formatpad-ai-fill-template-section', {
+        window.dispatchEvent(new CustomEvent('orpad-ai-fill-template-section', {
           detail: { section: text },
         }));
       });
@@ -1969,7 +1969,7 @@ function renderPreview(content) {
       e.preventDefault();
       const target = link.dataset.wikiTarget;
       if (!workspacePath) return;
-      const resolved = await window.formatpad.resolveWikiLink(workspacePath, target);
+      const resolved = await window.orpad.resolveWikiLink(workspacePath, target);
       if (resolved) {
         openFileInTab(resolved);
       }
@@ -2061,7 +2061,7 @@ function renderMermaidPreview(content) {
     const block = contentEl.querySelector('.mermaid-block');
     block?.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', { detail: { format: 'mermaid', scope: 'node' } }));
+      window.dispatchEvent(new CustomEvent('orpad-ai-open-actions', { detail: { format: 'mermaid', scope: 'node' } }));
     });
     const svg = block?.querySelector('svg');
     if (!svg) return;
@@ -2086,7 +2086,7 @@ function renderMermaidPreview(content) {
 }
 
 async function saveSVG(svgString) {
-  try { await window.formatpad.saveText('diagram.svg', svgString); } catch {}
+  try { await window.orpad.saveText('diagram.svg', svgString); } catch {}
 }
 
 async function exportSVGToPNG(svgString, size) {
@@ -2101,7 +2101,7 @@ async function exportSVGToPNG(svgString, size) {
     return '<svg' + a + '>';
   });
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#ffffff';
-  try { await window.formatpad.svgToPng(text, w, h, bg); }
+  try { await window.orpad.svgToPng(text, w, h, bg); }
   catch (err) { console.error('svgToPng failed', err); }
 }
 
@@ -2209,10 +2209,10 @@ function renderJSONDiffPreview(content) {
   const statsEl = panel.querySelector('.json-diff-stats');
   const prettyCb = panel.querySelector('.json-diff-pretty');
 
-  const savedPretty = localStorage.getItem('fp-diff-pretty');
+  const savedPretty = localStorage.getItem('orpad-diff-pretty');
   if (savedPretty !== null) prettyCb.checked = savedPretty === 'true';
 
-  rightTa.value = localStorage.getItem('fp-diff-other') || '';
+  rightTa.value = localStorage.getItem('orpad-diff-other') || '';
 
   function renderSideBg(bg, side, lines, ops) {
     // Per-side: each of its lines gets a diff-line div with coloring.
@@ -2252,8 +2252,8 @@ function renderJSONDiffPreview(content) {
     const editorText = editor.state.doc.toString();
     const leftRaw = leftTa.value;
     const rightRaw = rightTa.value;
-    localStorage.setItem('fp-diff-other', rightRaw);
-    localStorage.setItem('fp-diff-pretty', String(prettyCb.checked));
+    localStorage.setItem('orpad-diff-other', rightRaw);
+    localStorage.setItem('orpad-diff-pretty', String(prettyCb.checked));
     // Left: show editor content. Don't overwrite if user is actively editing the left textarea.
     if (document.activeElement !== leftTa) {
       leftTa.value = prettyCb.checked ? tryPrettyJSON(editorText) : editorText;
@@ -2914,7 +2914,7 @@ async function refreshBacklinks() {
     backlinksContentEl.innerHTML = '<p class="backlinks-empty">' + t('backlinks.markdownOnly') + '</p>';
     return;
   }
-  const data = await window.formatpad.getBacklinks(workspacePath, tab.filePath);
+  const data = await window.orpad.getBacklinks(workspacePath, tab.filePath);
   renderBacklinks(data);
 }
 
@@ -2982,14 +2982,14 @@ function showSidebar(panel) {
     sidebarEl.classList.add('hidden');
     document.getElementById('btn-files').classList.remove('active');
     document.getElementById('btn-toc').classList.remove('active');
-    localStorage.setItem('fp-sidebar-visible', 'false');
+    localStorage.setItem('orpad-sidebar-visible', 'false');
     return;
   }
 
   sidebarVisible = true;
   sidebarActivePanel = panel || sidebarActivePanel || 'files';
   sidebarEl.classList.remove('hidden');
-  const savedWidth = parseInt(localStorage.getItem('fp-sidebar-width'));
+  const savedWidth = parseInt(localStorage.getItem('orpad-sidebar-width'));
   if (savedWidth > 0) { sidebarEl.style.width = savedWidth + 'px'; sidebarEl.style.minWidth = savedWidth + 'px'; }
 
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
@@ -3001,8 +3001,8 @@ function showSidebar(panel) {
   document.getElementById('btn-files').classList.toggle('active', sidebarVisible && sidebarActivePanel === 'files');
   document.getElementById('btn-toc').classList.toggle('active', sidebarVisible && sidebarActivePanel === 'toc');
 
-  localStorage.setItem('fp-sidebar-visible', 'true');
-  localStorage.setItem('fp-sidebar-panel', sidebarActivePanel);
+  localStorage.setItem('orpad-sidebar-visible', 'true');
+  localStorage.setItem('orpad-sidebar-panel', sidebarActivePanel);
 
   if (sidebarActivePanel === 'search') {
     setTimeout(() => searchInputEl.focus(), 100);
@@ -3016,7 +3016,7 @@ document.querySelectorAll('.sidebar-tab').forEach(btn => {
     document.querySelectorAll('.sidebar-tab').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('sidebar-' + panel).classList.add('active');
-    localStorage.setItem('fp-sidebar-panel', panel);
+    localStorage.setItem('orpad-sidebar-panel', panel);
     document.getElementById('btn-toc').classList.toggle('active', panel === 'toc');
     if (panel === 'search') setTimeout(() => searchInputEl.focus(), 100);
     if (panel === 'backlinks') refreshBacklinks();
@@ -3052,14 +3052,14 @@ document.addEventListener('mouseup', () => {
     sidebarEl.style.transition = '';
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-    localStorage.setItem('fp-sidebar-width', sidebarEl.offsetWidth);
+    localStorage.setItem('orpad-sidebar-width', sidebarEl.offsetWidth);
   }
 });
 
 sidebarResizeEl.addEventListener('dblclick', () => {
   sidebarEl.style.width = '';
   sidebarEl.style.minWidth = '';
-  localStorage.removeItem('fp-sidebar-width');
+  localStorage.removeItem('orpad-sidebar-width');
 });
 
 // ==================== Git UI ====================
@@ -3315,7 +3315,7 @@ async function revertGitCurrentFile() {
   const ok = window.confirm(`Revert "${getTabDisplayName(tab)}" to HEAD?`);
   if (!ok) return;
   await gitRevertFile(workspacePath, tab.filePath);
-  const result = await window.formatpad.readFile(tab.filePath);
+  const result = await window.orpad.readFile(tab.filePath);
   if (!result?.error) {
     const content = normalizeLineEndings(result.content);
     tab.lastSavedContent = content;
@@ -3346,7 +3346,7 @@ async function reloadOpenWorkspaceTabsAfterCheckout(previousBranch) {
   for (const tab of workspaceTabs) {
     if (tab.isModified) continue;
     const oldPath = tab.filePath;
-    const result = await window.formatpad.readFile(oldPath);
+    const result = await window.orpad.readFile(oldPath);
     if (result?.error) {
       const oldContent = tab.editorState?.doc?.toString?.() || '';
       tab.title = `${getTabDisplayName(tab)} (${previousBranch || 'previous branch'})`;
@@ -3434,7 +3434,7 @@ function openGitPanel() {
     summary.innerHTML = `
       <strong>No Git repository detected.</strong>
       <span>${escapeHtml(workspacePath)}</span>
-      <span>FormatPad scans the opened workspace root for Git status.</span>
+      <span>OrPAD scans the opened workspace root for Git status.</span>
     `;
     appendGitPanelButton(actions, 'Refresh Status', true, async () => {
       await refreshGitStatus();
@@ -3516,20 +3516,20 @@ async function openGitBranchSwitcher() {
 }
 
 statusGitEl?.addEventListener('click', openGitPanel);
-document.getElementById('editor')?.addEventListener('formatpad-git-revert-hunk', (event) => {
+document.getElementById('editor')?.addEventListener('orpad-git-revert-hunk', (event) => {
   revertGitHunk(event.detail?.hunk).catch(err => notifyFormatError('Git', err));
 });
 
 // ==================== File Tree ====================
 async function openFolder() {
-  const folderPath = await window.formatpad.openFolderDialog();
+  const folderPath = await window.orpad.openFolderDialog();
   if (folderPath) {
     workspacePath = folderPath;
     expandedPaths.clear();
-    localStorage.setItem('fp-workspace-path', workspacePath);
+    localStorage.setItem('orpad-workspace-path', workspacePath);
     await loadFileTree();
-    window.formatpad.watchDirectory(folderPath);
-    window.formatpad.buildLinkIndex(folderPath).then(() => refreshFileNameCache());
+    window.orpad.watchDirectory(folderPath);
+    window.orpad.buildLinkIndex(folderPath).then(() => refreshFileNameCache());
     scheduleGitRefresh(0);
     scheduleSnippetRefresh(0);
     if (!sidebarVisible) showSidebar('files');
@@ -3542,7 +3542,7 @@ async function loadFileTree() {
     fileTreeEl.innerHTML = `<div class="tree-empty">${t('sidebar.openFolder')}</div>`;
     return;
   }
-  const tree = await window.formatpad.readDirectory(workspacePath);
+  const tree = await window.orpad.readDirectory(workspacePath);
   fileTreeCache = tree || [];
   renderFileTree(tree, 0);
   scheduleGitRefresh(0);
@@ -3623,7 +3623,7 @@ function renderFileTree(items, depth) {
         itemEl.addEventListener('dragstart', (e) => {
           const baseName = item.name.replace(/\.(md|markdown|mkd|mdx)$/i, '');
           e.dataTransfer.setData('text/plain', '[[' + baseName + ']]');
-          e.dataTransfer.setData('application/x-fp-link', baseName);
+          e.dataTransfer.setData('application/x-orpad-link', baseName);
           e.dataTransfer.effectAllowed = 'copy';
         });
       }
@@ -3696,7 +3696,7 @@ function renderSubTree(items, depth, container) {
         itemEl.addEventListener('dragstart', (e) => {
           const baseName = item.name.replace(/\.(md|markdown|mkd|mdx)$/i, '');
           e.dataTransfer.setData('text/plain', '[[' + baseName + ']]');
-          e.dataTransfer.setData('application/x-fp-link', baseName);
+          e.dataTransfer.setData('application/x-orpad-link', baseName);
           e.dataTransfer.effectAllowed = 'copy';
         });
       }
@@ -3713,7 +3713,7 @@ function escapeHtml(str) {
 async function openFileInTab(filePath) {
   const existing = findTabByPath(filePath);
   if (existing) { switchToTab(existing.id); return; }
-  const result = await window.formatpad.readFile(filePath);
+  const result = await window.orpad.readFile(filePath);
   if (result.error) return;
   createTab(result.filePath, result.dirPath, result.content);
 }
@@ -3733,14 +3733,14 @@ document.getElementById('file-tree').addEventListener('contextmenu', (e) => {
 // File watcher
 let fileTreeRefreshTimer = null;
 let linkIndexRefreshTimer = null;
-window.formatpad.onDirectoryChanged(() => {
+window.orpad.onDirectoryChanged(() => {
   if (fileTreeRefreshTimer) clearTimeout(fileTreeRefreshTimer);
   fileTreeRefreshTimer = setTimeout(loadFileTree, 500);
   scheduleGitRefresh(500);
   scheduleSnippetRefresh(500);
   if (linkIndexRefreshTimer) clearTimeout(linkIndexRefreshTimer);
   linkIndexRefreshTimer = setTimeout(() => {
-    if (workspacePath) window.formatpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
+    if (workspacePath) window.orpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
   }, 1000);
 });
 
@@ -3776,7 +3776,7 @@ document.getElementById('ctx-new-file').addEventListener('click', async () => {
   const name = prompt(t('context.newFile') + ':', 'untitled.md');
   if (!name) return;
   const fullPath = contextMenuTarget.replace(/\\/g, '/') + '/';
-  const result = await window.formatpad.createFile(fullPath);
+  const result = await window.orpad.createFile(fullPath);
   if (result.success) { await loadFileTree(); await openFileInTab(fullPath); }
 });
 
@@ -3784,7 +3784,7 @@ document.getElementById('ctx-new-folder').addEventListener('click', async () => 
   const name = prompt(t('context.newFolder') + ':');
   if (!name) return;
   const fullPath = contextMenuTarget.replace(/\\/g, '/') + '/';
-  const result = await window.formatpad.createFolder(fullPath);
+  const result = await window.orpad.createFolder(fullPath);
   if (result.success) await loadFileTree();
 });
 
@@ -3793,12 +3793,12 @@ document.getElementById('ctx-new-md').addEventListener('click', async () => {
   if (!name) return;
   const finalName = /\.(md|markdown|mkd|mdx)$/i.test(name) ? name : name + '.md';
   const fullPath = contextMenuTarget.replace(/\\/g, '/') + '/' + finalName;
-  const result = await window.formatpad.createFile(fullPath);
+  const result = await window.orpad.createFile(fullPath);
   if (result.success) { await loadFileTree(); await openFileInTab(fullPath); }
 });
 
 document.getElementById('ctx-reveal').addEventListener('click', () => {
-  window.formatpad.revealInExplorer(contextMenuTarget);
+  window.orpad.revealInExplorer(contextMenuTarget);
 });
 
 document.getElementById('ctx-rename').addEventListener('click', async () => {
@@ -3807,7 +3807,7 @@ document.getElementById('ctx-rename').addEventListener('click', async () => {
   if (!newName || newName === oldName) return;
   const dir = contextMenuTarget.substring(0, contextMenuTarget.length - oldName.length);
   const newPath = dir + newName;
-  const result = await window.formatpad.renameFile(contextMenuTarget, newPath);
+  const result = await window.orpad.renameFile(contextMenuTarget, newPath);
   if (result.success) {
     for (const tab of tabs) {
       if (tab.filePath && tab.filePath.replace(/\\/g, '/').toLowerCase() === contextMenuTarget.replace(/\\/g, '/').toLowerCase()) {
@@ -3824,7 +3824,7 @@ document.getElementById('ctx-rename').addEventListener('click', async () => {
 document.getElementById('ctx-delete').addEventListener('click', async () => {
   const name = contextMenuTarget.split(/[/\\]/).pop();
   if (!confirm(t('dialog.deleteConfirm').replace('{0}', name))) return;
-  const result = await window.formatpad.deleteFile(contextMenuTarget);
+  const result = await window.orpad.deleteFile(contextMenuTarget);
   if (result.success) {
     const tab = findTabByPath(contextMenuTarget);
     if (tab) { tab.isModified = false; await closeTab(tab.id); }
@@ -3862,7 +3862,7 @@ const SEARCH_FILTER_EXTS = [
   'xml', 'html', 'htm',
   'log', 'txt',
 ];
-const SEARCH_EXT_LS_KEY = 'fp-search-ext-filter';
+const SEARCH_EXT_LS_KEY = 'orpad-search-ext-filter';
 let searchSelectedExts = null;
 try {
   const raw = localStorage.getItem(SEARCH_EXT_LS_KEY);
@@ -3879,7 +3879,7 @@ async function performSearch() {
     searchResultsEl.innerHTML = `<div class="search-empty">${t('sidebar.openFolder')}</div>`;
     return;
   }
-  const results = await window.formatpad.searchFiles(workspacePath, query, {
+  const results = await window.orpad.searchFiles(workspacePath, query, {
     regex: searchRegex,
     caseSensitive: searchCaseSensitive,
     extensions: searchSelectedExts,
@@ -4083,14 +4083,14 @@ function flattenFileTree(items, out = []) {
 async function getQuickOpenFiles() {
   if (workspacePath && fileTreeCache.length === 0) {
     try {
-      fileTreeCache = await window.formatpad.readDirectory(workspacePath) || [];
+      fileTreeCache = await window.orpad.readDirectory(workspacePath) || [];
     } catch {
       fileTreeCache = [];
     }
   }
   const files = flattenFileTree(fileTreeCache);
   if (files.length || !workspacePath) return files;
-  const names = await window.formatpad.getFileNames(workspacePath);
+  const names = await window.orpad.getFileNames(workspacePath);
   return (names || []).map(item => ({
     filePath: item.filePath,
     relativePath: workspaceRelativePath(item.filePath),
@@ -4105,7 +4105,7 @@ async function readFileForQuickOpen(filePath) {
     const content = tab.id === activeTabId ? editor.state.doc.toString() : tab.editorState.doc.toString();
     return { filePath: tab.filePath, dirPath: tab.dirPath, content };
   }
-  const result = await window.formatpad.readFile(filePath);
+  const result = await window.orpad.readFile(filePath);
   if (result?.error) throw new Error(result.error);
   return result;
 }
@@ -4245,7 +4245,7 @@ function setupCommandRegistry() {
   const baseCommands = [
     { id: 'file.new', title: 'New File', category: 'File', keybinding: 'Ctrl N', priority: 100, run: () => { createTab(null, null, ''); editor.focus(); } },
     { id: 'file.newTemplate', title: 'New from Template', category: 'File', keybinding: 'Ctrl Alt N', run: openNewFromTemplate },
-    { id: 'file.open', title: 'Open File', category: 'File', keybinding: 'Ctrl O', run: () => window.formatpad.openFileDialog() },
+    { id: 'file.open', title: 'Open File', category: 'File', keybinding: 'Ctrl O', run: () => window.orpad.openFileDialog() },
     { id: 'file.openFolder', title: 'Open Folder', category: 'File', run: openFolder },
     { id: 'file.save', title: 'Save', category: 'File', keybinding: 'Ctrl S', enabled: ({ hasActiveTab }) => hasActiveTab, run: saveFile },
     { id: 'file.saveAs', title: 'Save As', category: 'File', keybinding: 'Ctrl Shift S', enabled: ({ hasActiveTab }) => hasActiveTab, run: saveFileAs },
@@ -4312,11 +4312,11 @@ function setupCommandRegistry() {
     runCommand: (id, args) => runCommand(id, args, getCommandContext()),
     getCommands: () => getCommands(getCommandContext()).map(({ run, when, enabled, ...command }) => command),
   };
-  try { window.formatpad.commands = publicCommands; } catch {}
-  if (!window.formatpad.commands) {
-    try { Object.defineProperty(window.formatpad, 'commands', { value: publicCommands, configurable: true }); } catch {}
+  try { window.orpad.commands = publicCommands; } catch {}
+  if (!window.orpad.commands) {
+    try { Object.defineProperty(window.orpad, 'commands', { value: publicCommands, configurable: true }); } catch {}
   }
-  window.formatpadCommands = publicCommands;
+  window.orpadCommands = publicCommands;
 }
 
 // ==================== View Modes ====================
@@ -4325,7 +4325,7 @@ const viewBtns = { editor: document.getElementById('btn-editor'), split: documen
 
 function setViewMode(mode) {
   viewMode = mode;
-  localStorage.setItem('fp-view-mode', mode);
+  localStorage.setItem('orpad-view-mode', mode);
   document.body.classList.remove('view-editor', 'view-split', 'view-preview');
   document.body.classList.add('view-' + mode);
   Object.entries(viewBtns).forEach(([k, btn]) => btn.classList.toggle('active', k === mode));
@@ -4367,7 +4367,7 @@ document.addEventListener('mouseup', () => {
     const sidebarWidth = sidebarVisible ? sidebarEl.offsetWidth : 0;
     const available = rect.width - sidebarWidth - dividerEl.offsetWidth;
     if (available > 0) {
-      localStorage.setItem('fp-divider-ratio', (editorPaneEl.offsetWidth / available).toFixed(4));
+      localStorage.setItem('orpad-divider-ratio', (editorPaneEl.offsetWidth / available).toFixed(4));
     }
   }
 });
@@ -4376,7 +4376,7 @@ dividerEl.addEventListener('dblclick', () => {
   editorPaneEl.style.flex = '1';
   editorPaneEl.style.width = '';
   previewPaneEl.style.flex = '1';
-  localStorage.removeItem('fp-divider-ratio');
+  localStorage.removeItem('orpad-divider-ratio');
 });
 
 // ==================== File Operations ====================
@@ -4390,7 +4390,7 @@ async function saveFile() {
     content = prepared;
   }
   if (tab.filePath) {
-    const ok = await window.formatpad.saveFile(tab.filePath, content);
+    const ok = await window.orpad.saveFile(tab.filePath, content);
     if (ok) {
       const editDuration = Math.round((Date.now() - (tab.openedAt || Date.now())) / 1000);
       tab.lastSavedContent = content;
@@ -4399,7 +4399,7 @@ async function saveFile() {
       updateTitle();
       renderTabBar();
       showSaveFlash();
-      window.formatpad.clearRecovery(getRecoveryKey(tab));
+      window.orpad.clearRecovery(getRecoveryKey(tab));
       track('file_save', { format: tab.viewType, edit_duration_sec: String(editDuration) });
       scheduleGitRefresh(0);
       if (isUserSnippetPath(tab.filePath)) scheduleSnippetRefresh(0);
@@ -4421,9 +4421,9 @@ async function saveFileAs() {
     content = prepared;
   }
   const oldKey = getRecoveryKey(tab);
-  const result = await window.formatpad.saveFileAs(content);
+  const result = await window.orpad.saveFileAs(content);
   if (result) {
-    window.formatpad.clearRecovery(oldKey);
+    window.orpad.clearRecovery(oldKey);
     tab.filePath = result;
     tab.dirPath = result.substring(0, Math.max(result.lastIndexOf('/'), result.lastIndexOf('\\')));
     tab.title = null;
@@ -4441,12 +4441,12 @@ async function saveFileAs() {
 }
 
 // ==================== Unsaved Changes Protection ====================
-window.formatpad.onCheckBeforeClose(async () => {
+window.orpad.onCheckBeforeClose(async () => {
   const unsavedTabs = tabs.filter(tb => tb.isModified);
-  if (unsavedTabs.length === 0) { window.formatpad.confirmClose(); return; }
+  if (unsavedTabs.length === 0) { window.orpad.confirmClose(); return; }
   for (const tab of unsavedTabs) {
     switchToTab(tab.id);
-    const result = await window.formatpad.showSaveDialog();
+    const result = await window.orpad.showSaveDialog();
     if (result === 'save') {
       await saveFile();
       if (getActiveTab()?.isModified) return;
@@ -4454,7 +4454,7 @@ window.formatpad.onCheckBeforeClose(async () => {
       return;
     }
   }
-  window.formatpad.confirmClose();
+  window.orpad.confirmClose();
 });
 
 // ==================== Toolbar ====================
@@ -4464,12 +4464,12 @@ document.getElementById('btn-new').addEventListener('click', () => {
 });
 document.getElementById('btn-template')?.addEventListener('click', openNewFromTemplate);
 document.getElementById('btn-open').addEventListener('click', () => {
-  window.formatpad.openFileDialog();
+  window.orpad.openFileDialog();
 });
 document.getElementById('btn-save').addEventListener('click', saveFile);
 document.getElementById('btn-files').addEventListener('click', () => showSidebar('files'));
 document.getElementById('btn-toc').addEventListener('click', () => showSidebar('toc'));
-document.getElementById('btn-set-default').addEventListener('click', () => window.formatpad.openDefaultAppsSettings());
+document.getElementById('btn-set-default').addEventListener('click', () => window.orpad.openDefaultAppsSettings());
 
 // ==================== Language Selector ====================
 const langSelect = document.getElementById('lang-select');
@@ -4492,10 +4492,10 @@ function refreshLocalizedSurfaces() {
 
 function changeAppLocale(code, { persist = true, broadcast = true } = {}) {
   if (!code) return;
-  if (persist) localStorage.setItem('fp-locale', code);
+  if (persist) localStorage.setItem('orpad-locale', code);
   setLocale(code);
   if (langSelect.value !== getLocaleCode()) langSelect.value = getLocaleCode();
-  if (broadcast) window.formatpad.setLocale(getLocaleCode());
+  if (broadcast) window.orpad.setLocale(getLocaleCode());
   refreshLocalizedSurfaces();
 }
 
@@ -4503,7 +4503,7 @@ langSelect.addEventListener('change', () => {
   changeAppLocale(langSelect.value);
 });
 
-window.formatpad.onLocaleChanged?.(({ code } = {}) => {
+window.orpad.onLocaleChanged?.(({ code } = {}) => {
   if (!code || code === getLocaleCode()) {
     refreshLocalizedSurfaces();
     return;
@@ -4530,7 +4530,7 @@ function getDroppedUrl(dataTransfer) {
 }
 document.addEventListener('dragenter', (e) => {
   if (isTabBarDragTarget(e)) return;
-  if (e.dataTransfer.types.includes('application/x-fp-link')) return;
+  if (e.dataTransfer.types.includes('application/x-orpad-link')) return;
   if (!e.dataTransfer.types.includes('Files') && !isUrlTransfer(e.dataTransfer)) return;
   if (e.target && e.target.closest && e.target.closest('.diff-text')) return; // let diff textarea handle
   e.preventDefault();
@@ -4540,7 +4540,7 @@ document.addEventListener('dragenter', (e) => {
 }, true);
 document.addEventListener('dragover', (e) => {
   if (isTabBarDragTarget(e)) return;
-  if (e.dataTransfer.types.includes('application/x-fp-link')) return;
+  if (e.dataTransfer.types.includes('application/x-orpad-link')) return;
   if (e.target && e.target.closest && e.target.closest('.diff-text')) return; // let diff textarea handle
   if (e.dataTransfer.types.includes('Files') || isUrlTransfer(e.dataTransfer)) {
     e.preventDefault();
@@ -4551,7 +4551,7 @@ document.addEventListener('dragover', (e) => {
 }, true);
 document.addEventListener('dragleave', (e) => {
   if (isTabBarDragTarget(e)) return;
-  if (e.dataTransfer.types.includes('application/x-fp-link')) return;
+  if (e.dataTransfer.types.includes('application/x-orpad-link')) return;
   if (!e.dataTransfer.types.includes('Files') && !isUrlTransfer(e.dataTransfer)) return;
   if (e.target && e.target.closest && e.target.closest('.diff-text')) return;
   e.preventDefault();
@@ -4562,7 +4562,7 @@ document.addEventListener('dragleave', (e) => {
 document.addEventListener('drop', (e) => {
   if (isTabBarDragTarget(e)) return;
   // Internal drag (file tree → editor): let CodeMirror handle it
-  if (e.dataTransfer.types.includes('application/x-fp-link')) return;
+  if (e.dataTransfer.types.includes('application/x-orpad-link')) return;
   // Diff panel: let the textarea's own drop handler load the file text
   if (e.target && e.target.closest && e.target.closest('.diff-text')) {
     dragCounter = 0;
@@ -4575,7 +4575,7 @@ document.addEventListener('drop', (e) => {
   e.stopPropagation();
   const droppedUrl = getDroppedUrl(e.dataTransfer);
   if (droppedUrl) {
-    window.formatpad.openUrl?.(droppedUrl).catch((err) => {
+    window.orpad.openUrl?.(droppedUrl).catch((err) => {
       if (err?.name !== 'AbortError') notifyFormatError('URL import', err);
     });
     return;
@@ -4583,7 +4583,7 @@ document.addEventListener('drop', (e) => {
   const files = e.dataTransfer.files;
   for (const file of files) {
     if (isSupportedFormat(file.name)) {
-      window.formatpad.dropFile(file);
+      window.orpad.dropFile(file);
     }
   }
 }, true);
@@ -5165,8 +5165,8 @@ function confirmUrlFetchModal(detail) {
   });
 }
 
-window.formatpad.setUrlConfirmHandler?.(confirmUrlFetchModal);
-window.formatpad.setUrlErrorHandler?.((err) => notifyFormatError('URL import', err));
+window.orpad.setUrlConfirmHandler?.(confirmUrlFetchModal);
+window.orpad.setUrlErrorHandler?.((err) => notifyFormatError('URL import', err));
 
 function openShareModal() {
   const tab = getActiveTab();
@@ -5183,7 +5183,7 @@ function openShareModal() {
   const body = document.createElement('div');
   body.className = 'share-modal';
   const intro = document.createElement('p');
-  intro.textContent = 'Copy a one-way snapshot link for the current tab. Anyone opening it gets an unsaved copy in FormatPad Web.';
+  intro.textContent = 'Copy a one-way snapshot link for the current tab. Anyone opening it gets an unsaved copy in OrPAD Web.';
   const linkBox = document.createElement('textarea');
   linkBox.className = 'share-link-box';
   linkBox.readOnly = true;
@@ -5239,7 +5239,7 @@ function showUpdateModal({ currentVersion, latestVersion, releaseBody, hasInstal
     : '';
   body.innerHTML = `
     <div class="update-modal-hero">
-      <img src="formatpad-mark.png" class="update-modal-icon" alt="">
+      <img src="orpad-mark.png" class="update-modal-icon" alt="">
       <div class="update-modal-hero-text">
         <div class="update-modal-headline">${escapeHtml(t('update.message').replace('{0}', latestVersion))}</div>
         <div class="update-modal-versions">
@@ -5259,7 +5259,7 @@ function showUpdateModal({ currentVersion, latestVersion, releaseBody, hasInstal
     ${verificationBlock}
   `;
 
-  const act = (action) => { closeFmtModal(); window.formatpad.updateAction(action); };
+  const act = (action) => { closeFmtModal(); window.orpad.updateAction(action); };
   const footer = [
     { label: t('update.remindLater'), onClick: () => act('later') },
     { label: t('update.skipVersion'), onClick: () => act('skip') },
@@ -5274,7 +5274,7 @@ function showUpdateModal({ currentVersion, latestVersion, releaseBody, hasInstal
 function showUpdateConfirmModal() {
   const body = document.createElement('div');
   body.className = 'update-confirm';
-  const isMac = window.formatpad?.platform === 'darwin';
+  const isMac = window.orpad?.platform === 'darwin';
   const msgKey = isMac ? 'update.confirmMessage.mac' : 'update.confirmMessage';
   body.innerHTML = `
     <div class="update-confirm-icon">⚠</div>
@@ -5287,7 +5287,7 @@ function showUpdateConfirmModal() {
       { label: t('update.confirmCancel'), onClick: () => closeFmtModal() },
       { label: t('update.confirmContinue'), primary: true, onClick: () => {
         showUpdateProgressModal();
-        window.formatpad.updateAction('download-install');
+        window.orpad.updateAction('download-install');
       }},
     ],
   });
@@ -5305,11 +5305,11 @@ function showUpdateProgressModal() {
   fmtModalEl.classList.add('locked');
 }
 
-if (window.formatpad?.onShowUpdateDialog) {
-  window.formatpad.onShowUpdateDialog((data) => showUpdateModal(data));
+if (window.orpad?.onShowUpdateDialog) {
+  window.orpad.onShowUpdateDialog((data) => showUpdateModal(data));
 }
-if (window.formatpad?.onUpdateProgress) {
-  window.formatpad.onUpdateProgress((progress) => {
+if (window.orpad?.onUpdateProgress) {
+  window.orpad.onUpdateProgress((progress) => {
     const fill = document.getElementById('update-progress-fill');
     const pct = document.getElementById('update-progress-pct');
     const v = Math.max(0, Math.min(1, progress));
@@ -5317,8 +5317,8 @@ if (window.formatpad?.onUpdateProgress) {
     if (pct) pct.textContent = Math.floor(v * 100) + '%';
   });
 }
-if (window.formatpad?.onUpdateError) {
-  window.formatpad.onUpdateError(() => {
+if (window.orpad?.onUpdateError) {
+  window.orpad.onUpdateError(() => {
     fmtModalEl.classList.remove('locked');
     closeFmtModal();
   });
@@ -5593,7 +5593,7 @@ document.getElementById('fmt-json-schema').addEventListener('click', () => {
 
   const schemaTa = document.createElement('textarea');
   schemaTa.placeholder = t('modal.schema.placeholder');
-  const saved = localStorage.getItem('fp-last-schema');
+  const saved = localStorage.getItem('orpad-last-schema');
   if (saved) schemaTa.value = saved;
 
   const result = document.createElement('div');
@@ -5620,8 +5620,8 @@ document.getElementById('fmt-json-schema').addEventListener('click', () => {
     fetchBtn.textContent = '...';
     fetchBtn.disabled = true;
     try {
-      if (window.formatpad.fetchUrlText) {
-        const result = await window.formatpad.fetchUrlText(url);
+      if (window.orpad.fetchUrlText) {
+        const result = await window.orpad.fetchUrlText(url);
         schemaTa.value = result.content;
       } else {
         const parsed = new URL(url);
@@ -5650,7 +5650,7 @@ document.getElementById('fmt-json-schema').addEventListener('click', () => {
       if (!schemaText) { result.textContent = '(paste schema and Validate)'; return; }
       const schema = JSON.parse(schemaText);
       const data = JSON.parse(editor.state.doc.toString());
-      localStorage.setItem('fp-last-schema', schemaText);
+      localStorage.setItem('orpad-last-schema', schemaText);
       // Per-schema Ajv cache
       let entry = ajvSchemaCache.get(schemaText);
       if (!entry) {
@@ -5927,7 +5927,7 @@ mmdThemeMenu.querySelectorAll('button').forEach(btn => {
   btn.addEventListener('click', () => {
     mmdThemeMenu.classList.add('hidden');
     mmdTheme = btn.dataset.theme;
-    localStorage.setItem('fp-mmd-theme', mmdTheme);
+    localStorage.setItem('orpad-mmd-theme', mmdTheme);
     invalidateRenderCache();
     if (getActiveTab()?.viewType === 'mermaid') renderPreview(editor.state.doc.toString());
   });
@@ -5945,7 +5945,7 @@ document.getElementById('editor').addEventListener('paste', async (e) => {
       const buffer = await blob.arrayBuffer();
       const ext = item.type.split('/')[1] === 'png' ? 'png' : 'jpg';
       const tab = getActiveTab();
-      const result = await window.formatpad.saveImage(tab?.filePath, new Uint8Array(buffer), ext);
+      const result = await window.orpad.saveImage(tab?.filePath, new Uint8Array(buffer), ext);
       if (result) {
         const { from, to } = editor.state.selection.main;
         const insert = `![image](${result})`;
@@ -6037,7 +6037,7 @@ function shouldIgnoreGlobalShortcut(event) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.formatpadInternal) return;
+  if (e.orpadInternal) return;
   if (shouldIgnoreGlobalShortcut(e)) return;
   const key = e.key.toLowerCase();
   const mod = e.ctrlKey || e.metaKey;
@@ -6108,7 +6108,7 @@ document.addEventListener('keydown', (e) => {
 }, true);
 
 // ==================== IPC ====================
-window.formatpad.onLoadMarkdown((data) => {
+window.orpad.onLoadMarkdown((data) => {
   const tab = createTab(data.filePath, data.dirPath, data.content, data.savedContent, {
     title: data.title,
     source: data.source,
@@ -6122,7 +6122,7 @@ window.formatpad.onLoadMarkdown((data) => {
     renderTabBar();
   }
 });
-window.formatpad.onNewFromTemplate?.(() => openNewFromTemplate());
+window.orpad.onNewFromTemplate?.(() => openNewFromTemplate());
 
 // ==================== Init ====================
 function applyLocaleToDOM() {
@@ -6154,7 +6154,7 @@ window.addEventListener('resize', () => {
   if (resizeRaf) cancelAnimationFrame(resizeRaf);
   resizeRaf = requestAnimationFrame(() => {
     resizeRaf = 0;
-    const savedRatio = parseFloat(localStorage.getItem('fp-divider-ratio'));
+    const savedRatio = parseFloat(localStorage.getItem('orpad-divider-ratio'));
     if (savedRatio > 0 && savedRatio < 1) {
       applyDividerRatio(savedRatio);
     } else {
@@ -6169,13 +6169,13 @@ window.addEventListener('resize', () => {
 
 (async () => {
   // Load locale
-  const { code: installerLocale, mtime } = await window.formatpad.getLocale();
-  const prevMtime = localStorage.getItem('fp-locale-mtime');
+  const { code: installerLocale, mtime } = await window.orpad.getLocale();
+  const prevMtime = localStorage.getItem('orpad-locale-mtime');
   if (String(mtime) !== prevMtime) {
-    localStorage.removeItem('fp-locale');
-    localStorage.setItem('fp-locale-mtime', String(mtime));
+    localStorage.removeItem('orpad-locale');
+    localStorage.setItem('orpad-locale-mtime', String(mtime));
   }
-  const userLocale = localStorage.getItem('fp-locale');
+  const userLocale = localStorage.getItem('orpad-locale');
   setLocale(userLocale || installerLocale);
   applyLocaleToDOM();
   langSelect.value = getLocaleCode();
@@ -6183,9 +6183,9 @@ window.addEventListener('resize', () => {
   await initTheme();
 
   // Restore sidebar state (migrate from legacy TOC)
-  const legacyTocVisible = localStorage.getItem('fp-toc-visible');
-  const savedSidebarVisible = localStorage.getItem('fp-sidebar-visible');
-  const savedSidebarPanel = localStorage.getItem('fp-sidebar-panel') || 'files';
+  const legacyTocVisible = localStorage.getItem('orpad-toc-visible');
+  const savedSidebarVisible = localStorage.getItem('orpad-sidebar-visible');
+  const savedSidebarPanel = localStorage.getItem('orpad-sidebar-panel') || 'files';
 
   if (savedSidebarVisible === 'true' || (savedSidebarVisible === null && legacyTocVisible === 'true')) {
     sidebarActivePanel = legacyTocVisible === 'true' && savedSidebarVisible === null ? 'toc' : savedSidebarPanel;
@@ -6194,41 +6194,41 @@ window.addEventListener('resize', () => {
     sidebarEl.offsetHeight;
     sidebarEl.style.transition = '';
   }
-  if (legacyTocVisible !== null) localStorage.removeItem('fp-toc-visible');
+  if (legacyTocVisible !== null) localStorage.removeItem('orpad-toc-visible');
 
   // Restore zoom level
   applyZoom(zoomLevel);
 
   // Restore view mode
-  setViewMode(localStorage.getItem('fp-view-mode') || 'split');
+  setViewMode(localStorage.getItem('orpad-view-mode') || 'split');
 
   // Hide format-bar until a tab is active
   updateFormatBar(getActiveTab()?.viewType || null);
 
   // Restore divider ratio
-  const savedRatio = parseFloat(localStorage.getItem('fp-divider-ratio'));
+  const savedRatio = parseFloat(localStorage.getItem('orpad-divider-ratio'));
   if (savedRatio > 0 && savedRatio < 1) applyDividerRatio(savedRatio);
 
-  const approvedWorkspace = await window.formatpad.getApprovedWorkspace?.().catch(() => null);
+  const approvedWorkspace = await window.orpad.getApprovedWorkspace?.().catch(() => null);
   if (approvedWorkspace) {
     workspacePath = approvedWorkspace;
-    localStorage.setItem('fp-workspace-path', workspacePath);
+    localStorage.setItem('orpad-workspace-path', workspacePath);
   } else if (workspacePath) {
     workspacePath = null;
-    localStorage.removeItem('fp-workspace-path');
+    localStorage.removeItem('orpad-workspace-path');
   }
 
   // Restore workspace & file tree
   if (workspacePath) {
     loadFileTree();
-    window.formatpad.watchDirectory(workspacePath);
-    window.formatpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
+    window.orpad.watchDirectory(workspacePath);
+    window.orpad.buildLinkIndex(workspacePath).then(() => refreshFileNameCache());
     scheduleGitRefresh(0);
     scheduleSnippetRefresh(0);
   }
   await refreshUserSnippets();
-  window.formatpad.userSnippets?.watch?.();
-  window.formatpad.userSnippets?.onChanged?.(() => scheduleSnippetRefresh(100));
+  window.orpad.userSnippets?.watch?.();
+  window.orpad.userSnippets?.onChanged?.(() => scheduleSnippetRefresh(100));
 
   terminalController = createTerminalPanel({
     track,
@@ -6302,7 +6302,7 @@ window.addEventListener('resize', () => {
       async getWorkspaceFiles() {
         if (!workspacePath) return [];
         try {
-          const names = await window.formatpad.getFileNames(workspacePath);
+          const names = await window.orpad.getFileNames(workspacePath);
           return (names || []).slice(0, 100).map(item => item.filePath || item.baseName || '');
         } catch {
           return [];
@@ -6362,22 +6362,22 @@ window.addEventListener('resize', () => {
         : tab.editorState.doc.toString();
       if (content === tab.lastAutoSavedContent) continue;
       tab.lastAutoSavedContent = content;
-      window.formatpad.autoSaveRecovery(getRecoveryKey(tab), content);
+      window.orpad.autoSaveRecovery(getRecoveryKey(tab), content);
     }
   }, 30000);
 
   // Analytics
-  const appInfo = await window.formatpad.getAppInfo();
+  const appInfo = await window.orpad.getAppInfo();
   initAnalytics({
     domain: process.env.PLAUSIBLE_DOMAIN,
     apiHost: 'https://plausible.io',
     isPackaged: appInfo.isPackaged,
     isWeb: IS_WEB,
   });
-  const firstRun = !localStorage.getItem('fp-first-run');
-  if (firstRun) localStorage.setItem('fp-first-run', '1');
+  const firstRun = !localStorage.getItem('orpad-first-run');
+  if (firstRun) localStorage.setItem('orpad-first-run', '1');
   track('session_start', {
-    platform: window.formatpad?.platform || 'web',
+    platform: window.orpad?.platform || 'web',
     version: appInfo.version || process.env.APP_VERSION,
     first_run: String(firstRun),
   });
@@ -6415,4 +6415,4 @@ document.getElementById('format-bar').addEventListener('click', (e) => {
 // Opt-out via: localStorage.setItem("analytics-opt-out", "1") and reload.
 
 // (v2 had a `onSetWorkspaceDir` listener for when the tree editor launched the MD editor as
-// a sub-window. In v3 FormatPad is a standalone process, so this hook is no longer needed.)
+// a sub-window. In v3 OrPAD is a standalone process, so this hook is no longer needed.)

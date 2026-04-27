@@ -2,7 +2,7 @@ import { isCommandEnabled, onCommandsChanged } from '../commands/registry.js';
 
 const OWNER = 'command-palette';
 const MAX_VISIBLE = 50;
-const RECENT_KEY = 'fp-command-palette-recent';
+const RECENT_KEY = 'orpad-command-palette-recent';
 
 function normalize(value) {
   return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -185,7 +185,7 @@ export function createCommandPalette({ root, getCommands, runCommand, getContext
   }
 
   function open(initialQuery = '') {
-    window.dispatchEvent(new CustomEvent('formatpad-overlay-open', { detail: { owner: OWNER } }));
+    window.dispatchEvent(new CustomEvent('orpad-overlay-open', { detail: { owner: OWNER } }));
     lastFocus = document.activeElement;
     overlay.classList.remove('hidden');
     input.value = initialQuery;
@@ -227,7 +227,7 @@ export function createCommandPalette({ root, getCommands, runCommand, getContext
   overlay.addEventListener('mousedown', (event) => {
     if (event.target === overlay) close();
   });
-  window.addEventListener('formatpad-overlay-open', (event) => {
+  window.addEventListener('orpad-overlay-open', (event) => {
     if (event.detail?.owner !== OWNER) close();
   });
   onCommandsChanged(() => { if (isOpen()) render(); });

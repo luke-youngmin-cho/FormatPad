@@ -5,8 +5,8 @@ import * as path from 'path';
 import { launchElectron } from '../helpers';
 
 test('renderer file APIs require an approved file or workspace capability', async () => {
-  const secretFile = path.join(os.tmpdir(), `fp-secret-${Date.now()}.md`);
-  const writeTarget = path.join(os.tmpdir(), `fp-write-${Date.now()}.md`);
+  const secretFile = path.join(os.tmpdir(), `orpad-secret-${Date.now()}.md`);
+  const writeTarget = path.join(os.tmpdir(), `orpad-write-${Date.now()}.md`);
   fs.writeFileSync(secretFile, '# Secret outside workspace\n');
 
   const app = await launchElectron();
@@ -14,12 +14,12 @@ test('renderer file APIs require an approved file or workspace capability', asyn
   await win.waitForLoadState('domcontentloaded');
 
   const readResult = await win.evaluate(async (filePath) => {
-    return await (window as any).formatpad.readFile(filePath);
+    return await (window as any).orpad.readFile(filePath);
   }, secretFile);
   expect(String(readResult?.error || '')).toContain('outside');
 
   const saveResult = await win.evaluate(async (filePath) => {
-    return await (window as any).formatpad.saveFile(filePath, '# Should not be written\n');
+    return await (window as any).orpad.saveFile(filePath, '# Should not be written\n');
   }, writeTarget);
   expect(saveResult).toBe(false);
   expect(fs.existsSync(writeTarget)).toBe(false);
@@ -29,7 +29,7 @@ test('renderer file APIs require an approved file or workspace capability', asyn
 });
 
 test('opening a file does not grant arbitrary sibling file access', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fp-cap-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orpad-cap-'));
   const openedFile = path.join(dir, 'opened.md');
   const siblingFile = path.join(dir, 'sibling.md');
   fs.writeFileSync(openedFile, '# Opened file\n');
@@ -40,12 +40,12 @@ test('opening a file does not grant arbitrary sibling file access', async () => 
   await win.waitForLoadState('domcontentloaded');
 
   const openedResult = await win.evaluate(async (filePath) => {
-    return await (window as any).formatpad.readFile(filePath);
+    return await (window as any).orpad.readFile(filePath);
   }, openedFile);
   expect(openedResult?.content).toContain('Opened file');
 
   const siblingResult = await win.evaluate(async (filePath) => {
-    return await (window as any).formatpad.readFile(filePath);
+    return await (window as any).orpad.readFile(filePath);
   }, siblingFile);
   expect(String(siblingResult?.error || '')).toContain('outside');
 
@@ -54,7 +54,7 @@ test('opening a file does not grant arbitrary sibling file access', async () => 
 });
 
 test('workspace tree access comes from main-owned approved workspace state', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fp-workspace-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orpad-workspace-'));
   fs.writeFileSync(path.join(dir, 'note.md'), '# Workspace note\n');
 
   const app = await launchElectron();
@@ -67,12 +67,12 @@ test('workspace tree access comes from main-owned approved workspace state', asy
   }));
 
   const approved = await win.evaluate(async () => {
-    return await (window as any).formatpad.getApprovedWorkspace();
+    return await (window as any).orpad.getApprovedWorkspace();
   });
   expect(path.resolve(approved)).toBe(path.resolve(dir));
 
   const tree = await win.evaluate(async (workspacePath) => {
-    return await (window as any).formatpad.readDirectory(workspacePath);
+    return await (window as any).orpad.readDirectory(workspacePath);
   }, dir);
   expect(tree.some((item: { name: string }) => item.name === 'note.md')).toBe(true);
 
@@ -81,8 +81,8 @@ test('workspace tree access comes from main-owned approved workspace state', asy
 });
 
 test('workspace capability rejects symlink escapes where supported', async ({}, testInfo) => {
-  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fp-workspace-'));
-  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fp-outside-'));
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orpad-workspace-'));
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orpad-outside-'));
   const linkPath = path.join(workspaceDir, 'outside-link');
   const secretPath = path.join(outsideDir, 'secret.md');
   fs.writeFileSync(secretPath, '# Symlink escape secret\n');
@@ -103,11 +103,11 @@ test('workspace capability rejects symlink escapes where supported', async ({}, 
     workspaceRoot: workspaceDir,
   }));
   await win.evaluate(async () => {
-    await (window as any).formatpad.getApprovedWorkspace();
+    await (window as any).orpad.getApprovedWorkspace();
   });
 
   const result = await win.evaluate(async (filePath) => {
-    return await (window as any).formatpad.readFile(filePath);
+    return await (window as any).orpad.readFile(filePath);
   }, path.join(linkPath, 'secret.md'));
   expect(String(result?.error || '')).toContain('outside');
 

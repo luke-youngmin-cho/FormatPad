@@ -3,7 +3,7 @@ import { t } from '../i18n.js';
 
 const SHELL_OPERATORS = new Set(['&&', '||', ';', '|', '>', '>>', '<', '&']);
 const MAX_RENDERED_CHARS = 240_000;
-const TERMINAL_LAYOUT_KEY = 'fp-terminal-layout-state';
+const TERMINAL_LAYOUT_KEY = 'orpad-terminal-layout-state';
 const TERMINAL_LAYOUTS = ['bottom', 'left', 'right', 'floating'];
 const TERMINAL_DOCK_TARGETS = ['left', 'right', 'bottom', 'floating'];
 const DOCK_DRAG_THRESHOLD = 8;
@@ -530,7 +530,7 @@ export function createTerminalPanel({ hooks, track }) {
   }
 
   function dispatchRunnerOutput(block) {
-    window.dispatchEvent(new CustomEvent('formatpad-runner-output', {
+    window.dispatchEvent(new CustomEvent('orpad-runner-output', {
       detail: {
         runId: block.id,
         commandLine: block.commandLine,
@@ -563,7 +563,7 @@ export function createTerminalPanel({ hooks, track }) {
     for (const [label, handler] of [
       [t('terminal.action.copy'), async () => navigator.clipboard.writeText(stripAnsi(block.output || ''))],
       [t('terminal.action.askAi'), () => {
-        window.dispatchEvent(new CustomEvent('formatpad-ai-prefill', {
+        window.dispatchEvent(new CustomEvent('orpad-ai-prefill', {
           detail: { text: `<runner_output>\n${stripAnsi(block.output || '')}\n</runner_output>\n\nExplain this output:` },
         }));
       }],
@@ -895,7 +895,7 @@ export function createTerminalPanel({ hooks, track }) {
     }
   });
 
-  window.addEventListener('formatpad-terminal-prefill', (event) => {
+  window.addEventListener('orpad-terminal-prefill', (event) => {
     const command = String(event.detail?.command || event.detail?.text || '').trim();
     if (!command) return;
     toggle(true);
@@ -943,7 +943,7 @@ export function createTerminalPanel({ hooks, track }) {
       setTerminalLayout(layout);
     },
     prefill(command) {
-      window.dispatchEvent(new CustomEvent('formatpad-terminal-prefill', { detail: { command } }));
+      window.dispatchEvent(new CustomEvent('orpad-terminal-prefill', { detail: { command } }));
     },
     getLastOutput() {
       const block = blocks.find(item => item.finishedAt);

@@ -27,7 +27,7 @@ export const markdownSnippets = [
   {
     name: 'toc-marker',
     description: 'Tracker table-of-contents marker',
-    body: '<!-- formatpad:toc -->\n${0}\n<!-- /formatpad:toc -->',
+    body: '<!-- orpad:toc -->\n${0}\n<!-- /orpad:toc -->',
   },
   {
     name: 'frontmatter',

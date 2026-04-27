@@ -5,7 +5,7 @@ import * as path from 'path';
 import { launchElectron } from '../helpers';
 
 test('edit + Ctrl+S saves content to disk', async () => {
-  const tmpFile = path.join(os.tmpdir(), `fp-test-${Date.now()}.md`);
+  const tmpFile = path.join(os.tmpdir(), `orpad-test-${Date.now()}.md`);
   fs.writeFileSync(tmpFile, '# Original Content\n');
 
   const app = await launchElectron([tmpFile]);

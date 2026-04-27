@@ -14,7 +14,7 @@ test('drag a tab between two others; order updates', async () => {
     path.resolve('tests/fixtures/sample.yaml'),
   ];
   for (const fp of fixtures) {
-    await win.evaluate((p: string) => window.formatpad.dropFile(p), fp);
+    await win.evaluate((p: string) => window.orpad.dropFile(p), fp);
     await win.waitForTimeout(200);
   }
 

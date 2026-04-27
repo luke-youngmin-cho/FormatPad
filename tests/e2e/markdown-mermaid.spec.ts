@@ -8,7 +8,7 @@ test('mermaid fenced block renders an SVG in preview', async () => {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // Wait past the 400ms per-block debounce before polling for the SVG.
   await win.waitForTimeout(600);

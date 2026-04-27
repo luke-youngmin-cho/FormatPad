@@ -77,7 +77,7 @@ export function setLocale(code) {
   current = locales[currentCode];
   document.documentElement.lang = currentCode;
   document.body.dataset.dropText = current.dropHere;
-  window.dispatchEvent(new CustomEvent('formatpad-locale-changed', {
+  window.dispatchEvent(new CustomEvent('orpad-locale-changed', {
     detail: { code: currentCode },
   }));
 }

@@ -1038,11 +1038,11 @@ export class SpreadsheetGrid {
       b.addEventListener('click', () => {
         this.hideContextMenu();
         if (it.aiAction) {
-          window.dispatchEvent(new CustomEvent('formatpad-ai-run-action', {
+          window.dispatchEvent(new CustomEvent('orpad-ai-run-action', {
             detail: { id: it.aiAction, scope: it.aiAction === 'csv.type-outliers' ? 'column' : 'selection', column: this.active.col, selection: { ...this.sel } },
           }));
         } else if (it.aiOpen) {
-          window.dispatchEvent(new CustomEvent('formatpad-ai-open-actions', { detail: { scope: 'document', column: this.active.col, selection: { ...this.sel } } }));
+          window.dispatchEvent(new CustomEvent('orpad-ai-open-actions', { detail: { scope: 'document', column: this.active.col, selection: { ...this.sel } } }));
         } else {
           this.runAction(it.act);
         }

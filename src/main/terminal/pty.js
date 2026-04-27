@@ -566,10 +566,10 @@ function createPtyManager({ app }) {
     const mergedEnv = {
       ...baseEnv,
       [process.platform === 'win32' ? 'Path' : 'PATH']: envPath,
-      TERM_PROGRAM: 'FormatPad',
+      TERM_PROGRAM: 'OrPAD',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      FORMATPAD_TERMINAL: '1',
+      ORPAD_TERMINAL: '1',
       ...(input.env && typeof input.env === 'object' ? input.env : {}),
     };
     const { env, maskedCount } = filterSecrets(mergedEnv);

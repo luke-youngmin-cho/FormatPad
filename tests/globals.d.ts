@@ -1,6 +1,6 @@
-// Augment Window so page.evaluate() callbacks can reference window.formatpad
+// Augment Window so page.evaluate() callbacks can reference window.orpad
 interface Window {
-  formatpad: {
+  orpad: {
     platform: string;
     dropFile: (file: File) => void;
     autoSaveRecovery: (filePath: string | null, content: string) => Promise<void>;

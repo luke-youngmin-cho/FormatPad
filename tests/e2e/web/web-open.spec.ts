@@ -7,13 +7,13 @@ const docsDir = path.resolve('docs');
 
 async function installHangingAiMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    localStorage.setItem('fp-ai-provider', 'openai-compatible');
-    localStorage.setItem('fp-ai-endpoint-openai-compatible', 'https://formatpad.test');
+    localStorage.setItem('orpad-ai-provider', 'openai-compatible');
+    localStorage.setItem('orpad-ai-endpoint-openai-compatible', 'https://orpad.test');
 
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (!url.startsWith('https://formatpad.test/chat/completions')) {
+      if (!url.startsWith('https://orpad.test/chat/completions')) {
         return originalFetch(input, init);
       }
 
@@ -34,13 +34,13 @@ async function installHangingAiMock(page: Page): Promise<void> {
 
 async function installDelayedAiMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    localStorage.setItem('fp-ai-provider', 'openai-compatible');
-    localStorage.setItem('fp-ai-endpoint-openai-compatible', 'https://formatpad.test');
+    localStorage.setItem('orpad-ai-provider', 'openai-compatible');
+    localStorage.setItem('orpad-ai-endpoint-openai-compatible', 'https://orpad.test');
 
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (!url.startsWith('https://formatpad.test/chat/completions')) {
+      if (!url.startsWith('https://orpad.test/chat/completions')) {
         return originalFetch(input, init);
       }
 
@@ -187,14 +187,14 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
 
   await page.locator('#btn-ai').click();
   await expect(page.locator('.ai-sidebar')).toBeVisible();
-  await page.evaluate(() => (window as any).formatpadCommands.runCommand('file.new'));
+  await page.evaluate(() => (window as any).orpadCommands.runCommand('file.new'));
   await expect(page.locator('.ai-context-chip')).toContainText('Context: Untitled');
 
   await page.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
   await expect(page.locator('.ai-mcp-panel')).toBeVisible();
   await expect(page.locator('.ai-mcp-panel')).toContainText('MCP is desktop-only');
 
-  await page.evaluate(() => (window as any).formatpadCommands.runCommand('git.openPanel'));
+  await page.evaluate(() => (window as any).orpadCommands.runCommand('git.openPanel'));
   await expect(page.locator('#fmt-modal')).toContainText('Git Status and Commands');
   await page.locator('#fmt-modal-close').click();
 
@@ -276,9 +276,9 @@ test('MCP stopped servers do not appear enabled from stale config', async ({ pag
     const card = page.locator('.ai-mcp-card').filter({ hasText: 'Stale MCP' });
     await expect(card).toBeVisible();
     await expect(card.getByRole('checkbox', { name: 'Enable Stale MCP' })).not.toBeChecked();
-    await expect(card).toContainText('stopped');
+    await expect(card).toContainText(/stopped/i);
     await card.getByRole('button', { name: 'Tools' }).click();
-    await expect(page.locator('.ai-action-status')).toContainText('Enable Stale MCP before using MCP tools.');
+    await expect(page.locator('.ai-action-status')).toContainText(/Enable Stale MCP before using MCP Tools/i);
   } finally {
     await close();
   }
@@ -296,7 +296,7 @@ test('AI edit diff modal close button cancels the running action', async ({ page
     await page.goto(url);
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
-      await (window as any).formatpad.dropFile(new File(['# Plan\n\n## Scope\n\nShip beta.'], 'plan.md', { type: 'text/markdown' }));
+      await (window as any).orpad.dropFile(new File(['# Plan\n\n## Scope\n\nShip beta.'], 'plan.md', { type: 'text/markdown' }));
     });
 
     await page.locator('#btn-ai').click();
@@ -326,7 +326,7 @@ test('Assist tools distinguish local actions from AI-powered actions', async ({ 
     await page.goto(url);
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
-      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad","beta":2}'], 'sample.json', { type: 'application/json' }));
+      await (window as any).orpad.dropFile(new File(['{"name":"OrPAD","beta":2}'], 'sample.json', { type: 'application/json' }));
     });
 
     await page.locator('#btn-ai').click();
@@ -360,7 +360,7 @@ test('JSON sample generation cancel does not create an output tab', async ({ pag
     await page.goto(url);
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
-      await (window as any).formatpad.dropFile(new File(['{"type":"object","properties":{"name":{"type":"string"}}}'], 'schema.json', { type: 'application/json' }));
+      await (window as any).orpad.dropFile(new File(['{"type":"object","properties":{"name":{"type":"string"}}}'], 'schema.json', { type: 'application/json' }));
     });
 
     await page.locator('#btn-ai').click();
@@ -389,7 +389,7 @@ test('JSON sample generation refuses non-schema documents', async ({ page }) => 
     await page.goto(url);
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
-      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad","beta":2}'], 'sample.json', { type: 'application/json' }));
+      await (window as any).orpad.dropFile(new File(['{"name":"OrPAD","beta":2}'], 'sample.json', { type: 'application/json' }));
     });
 
     await page.locator('#btn-ai').click();
@@ -418,8 +418,8 @@ test('AI edit apply returns to the source tab after tab switching', async ({ pag
     await page.goto(url);
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
-      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad",}'], 'broken.json', { type: 'application/json' }));
-      await (window as any).formatpad.dropFile(new File(['{"other":true}'], 'other.json', { type: 'application/json' }));
+      await (window as any).orpad.dropFile(new File(['{"name":"OrPAD",}'], 'broken.json', { type: 'application/json' }));
+      await (window as any).orpad.dropFile(new File(['{"other":true}'], 'other.json', { type: 'application/json' }));
     });
 
     await page.locator('.tab-item').filter({ hasText: 'broken.json' }).click();
@@ -435,7 +435,7 @@ test('AI edit apply returns to the source tab after tab switching', async ({ pag
 
     await page.locator('#fmt-modal-footer button.primary').click();
     await page.locator('.tab-item').filter({ hasText: 'broken.json' }).click();
-    await expect(page.locator('.cm-content')).toContainText('"name":"FormatPad"');
+    await expect(page.locator('.cm-content')).toContainText('"name":"OrPAD"');
 
     await page.locator('.tab-item').filter({ hasText: 'other.json' }).click();
     await expect(page.locator('.cm-content')).toContainText('"other":true');
@@ -472,7 +472,7 @@ test('web file launch consumer and non-FSA save fallback work', async ({ page })
   await page.waitForLoadState('domcontentloaded');
 
   const opened = await page.evaluate(async () => {
-    return await (window as any).formatpad.openFileHandles([{
+    return await (window as any).orpad.openFileHandles([{
       kind: 'file',
       name: 'launch.md',
       getFile: async () => new File(['# Launched\n\nfrom file handler'], 'launch.md', { type: 'text/markdown' }),
@@ -484,7 +484,7 @@ test('web file launch consumer and non-FSA save fallback work', async ({ page })
 
   const downloadPromise = page.waitForEvent('download');
   const saved = await page.evaluate(async () => {
-    return await (window as any).formatpad.saveFile('web:nohandle/fallback.md', '# Download fallback');
+    return await (window as any).orpad.saveFile('web:nohandle/fallback.md', '# Download fallback');
   });
   expect(saved).toBe(true);
   const download = await downloadPromise;
@@ -506,7 +506,7 @@ test('AI edit action cancel stops a hanging provider response', async ({ page })
     await page.goto(url);
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(async () => {
-      await (window as any).formatpad.dropFile(new File(['{"name":"FormatPad"}'], 'sample.json', { type: 'application/json' }));
+      await (window as any).orpad.dropFile(new File(['{"name":"OrPAD"}'], 'sample.json', { type: 'application/json' }));
     });
 
     await page.locator('#btn-ai').click();
@@ -514,7 +514,7 @@ test('AI edit action cancel stops a hanging provider response', async ({ page })
     await page.getByRole('button', { name: /Validate \+ explain/ }).click();
     await expect(page.locator('#fmt-modal')).toContainText('Validate current JSON');
     await expect(page.locator('#fmt-modal')).toContainText('Schema for current file: sample.json');
-    await expect(page.locator('#fmt-modal')).toContainText('FormatPad validates the currently open JSON document against this schema.');
+    await expect(page.locator('#fmt-modal')).toContainText('OrPAD validates the currently open JSON document against this schema.');
     await page.locator('#fmt-modal-footer button.primary').click();
 
     await expect(page.locator('.ai-action-running')).toContainText('Validate + explain');

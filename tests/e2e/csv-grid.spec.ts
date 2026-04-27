@@ -8,7 +8,7 @@ test('CSV file renders grid with 10 data rows and a header', async () => {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // Wait for the spreadsheet grid
   await expect(win.locator('.sgrid-table')).toBeVisible({ timeout: 8000 });

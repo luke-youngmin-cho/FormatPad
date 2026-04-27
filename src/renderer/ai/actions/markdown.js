@@ -28,7 +28,7 @@ function buildToc(markdown) {
       const slug = text.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-');
       return `${'  '.repeat(level - 2)}- [${text}](#${slug})`;
     });
-  return ['<!-- formatpad:toc:start -->', '## Table of Contents', '', ...headings, '<!-- formatpad:toc:end -->', ''].join('\n');
+  return ['<!-- orpad:toc:start -->', '## Table of Contents', '', ...headings, '<!-- orpad:toc:end -->', ''].join('\n');
 }
 
 registerAction({
@@ -76,7 +76,7 @@ registerAction({
   async run({ context, ui }) {
     const doc = context.activeTab?.content || '';
     const toc = buildToc(doc);
-    const re = /<!-- formatpad:toc:start -->[\s\S]*?<!-- formatpad:toc:end -->\n?/;
+    const re = /<!-- orpad:toc:start -->[\s\S]*?<!-- orpad:toc:end -->\n?/;
     const next = re.test(doc) ? doc.replace(re, toc) : `${toc}\n${doc}`;
     await ui.applyDocument({ title: 'Generate / refresh Markdown TOC', newText: next });
     return { message: 'TOC generated' };

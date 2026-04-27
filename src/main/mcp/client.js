@@ -87,7 +87,7 @@ class McpClientPool {
       };
 
       const client = new Client(
-        { name: 'formatpad', version },
+        { name: 'orpad', version },
         { capabilities: {} }
       );
       entry.client = client;

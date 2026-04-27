@@ -77,7 +77,7 @@ async function promptForToolPermission(event, registry, permissions, serverId, t
     message: `Allow MCP tool call: ${(server?.label || serverId)} / ${toolName}`,
     detail: `${desc.readOnly
       ? 'This tool name looks read-only.'
-      : 'This tool may mutate data. FormatPad will not persist this permission.'}\n\nArguments:\n${shortJson(args)}`,
+      : 'This tool may mutate data. OrPAD will not persist this permission.'}\n\nArguments:\n${shortJson(args)}`,
     buttons,
     cancelId: 0,
     defaultId: 1,

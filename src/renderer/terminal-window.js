@@ -16,7 +16,7 @@ function messageFromError(value) {
 
 async function applyInitialLocale() {
   try {
-    const { code } = await window.formatpad?.getLocale?.();
+    const { code } = await window.orpad?.getLocale?.();
     if (code) setLocale(code);
   } catch {}
 }
@@ -182,7 +182,7 @@ async function createTerminalWindowApp() {
 
   dockBtn.addEventListener('click', dockToMain);
   closeBtn.addEventListener('click', () => window.close());
-  window.formatpad?.onLocaleChanged?.(({ code } = {}) => {
+  window.orpad?.onLocaleChanged?.(({ code } = {}) => {
     if (code) setLocale(code);
     refreshLocale();
   });
@@ -190,7 +190,7 @@ async function createTerminalWindowApp() {
     closeModal();
     group?.destroy?.();
   });
-  window.addEventListener('formatpad-ai-prefill', async (event) => {
+  window.addEventListener('orpad-ai-prefill', async (event) => {
     const text = String(event.detail?.text || '');
     if (!text) return;
     await navigator.clipboard.writeText(text);

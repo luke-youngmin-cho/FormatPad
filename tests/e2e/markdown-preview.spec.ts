@@ -8,7 +8,7 @@ test('markdown file preview renders heading and fenced code block', async () => 
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   const preview = win.locator('#content');
   await expect(preview.locator('h1')).toHaveText('Hello World', { timeout: 8000 });

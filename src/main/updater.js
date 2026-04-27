@@ -5,11 +5,11 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const GITHUB_OWNER = 'luke-youngmin-cho';
-const GITHUB_REPO = 'FormatPad';
+const GITHUB_REPO = 'OrPAD';
 const RELEASE_MANIFEST_NAMES = new Set([
-  'formatpad-release-manifest.json',
-  'formatpad-release-manifest-windows.json',
-  'formatpad-release-manifest-macos.json',
+  'orpad-release-manifest.json',
+  'orpad-release-manifest-windows.json',
+  'orpad-release-manifest-macos.json',
   'release-manifest.json',
 ]);
 
@@ -113,7 +113,7 @@ function httpsGet(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
       headers: {
-        'User-Agent': `FormatPad/${app.getVersion()}`,
+        'User-Agent': `OrPAD/${app.getVersion()}`,
         'Accept': 'application/vnd.github.v3+json',
       },
     }, (res) => {
@@ -140,7 +140,7 @@ function downloadFile(url, destPath, onProgress) {
   return new Promise((resolve, reject) => {
     const doDownload = (downloadUrl) => {
       const req = https.get(downloadUrl, {
-        headers: { 'User-Agent': `FormatPad/${app.getVersion()}` },
+        headers: { 'User-Agent': `OrPAD/${app.getVersion()}` },
       }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
           res.resume();
@@ -170,8 +170,8 @@ function downloadFile(url, destPath, onProgress) {
 }
 
 function getUpdaterPublicKey() {
-  if (process.env.FORMATPAD_UPDATER_PUBLIC_KEY) {
-    return String(process.env.FORMATPAD_UPDATER_PUBLIC_KEY).trim();
+  if (process.env.ORPAD_UPDATER_PUBLIC_KEY) {
+    return String(process.env.ORPAD_UPDATER_PUBLIC_KEY).trim();
   }
   try {
     const configured = require('./updater-public-key.json');
@@ -215,9 +215,9 @@ function verifyManifestSignature(manifest, publicKey) {
 }
 
 function platformManifestName() {
-  if (process.platform === 'darwin') return 'formatpad-release-manifest-macos.json';
-  if (process.platform === 'win32') return 'formatpad-release-manifest-windows.json';
-  return 'formatpad-release-manifest.json';
+  if (process.platform === 'darwin') return 'orpad-release-manifest-macos.json';
+  if (process.platform === 'win32') return 'orpad-release-manifest-windows.json';
+  return 'orpad-release-manifest.json';
 }
 
 function findManifestAssets(release) {
@@ -324,17 +324,35 @@ async function verifyDownloadedInstaller(filePath, fileEntry) {
 // Pending update state per-window. Cleared when the user dismisses the prompt.
 const pending = new Map();
 
+function selectUpdateRelease(releases, currentVersion) {
+  let selected = null;
+  let selectedVersion = null;
+  for (const release of releases) {
+    if (!release || release.draft || !release.tag_name) continue;
+    const releaseVersion = release.tag_name.replace(/^v/, '');
+    if (compareVersions(currentVersion, releaseVersion) <= 0) continue;
+    if (!selected || compareVersions(selectedVersion, releaseVersion) > 0) {
+      selected = release;
+      selectedVersion = releaseVersion;
+    }
+  }
+  return selected;
+}
+
 async function checkForUpdates(win, t) {
   if (win.isDestroyed()) return;
   try {
     const raw = await httpsGet(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=20`
     );
-    const release = JSON.parse(raw);
-    const latestVersion = release.tag_name.replace(/^v/, '');
+    const releases = JSON.parse(raw);
     const currentVersion = app.getVersion();
+    const release = Array.isArray(releases)
+      ? selectUpdateRelease(releases, currentVersion)
+      : null;
+    if (!release) return;
+    const latestVersion = release.tag_name.replace(/^v/, '');
 
-    if (compareVersions(currentVersion, latestVersion) <= 0) return;
     if (getSkippedVersion() === latestVersion) return;
 
     const installerAsset = selectInstallerAsset(release.assets || []);
@@ -401,7 +419,7 @@ async function handleUpdateAction(win, action) {
         type: 'error',
         title: t('update.errorTitle'),
         message: err.message,
-        detail: 'For safety, FormatPad did not open the downloaded installer. You can review the GitHub release manually.',
+        detail: 'For safety, OrPAD did not open the downloaded installer. You can review the GitHub release manually.',
         buttons: ['OK', 'View Release'],
         defaultId: 0,
         cancelId: 0,

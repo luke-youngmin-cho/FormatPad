@@ -11,7 +11,7 @@ test('HTML preview renders sanitized output; inline script does not execute', as
   let dialogFired = false;
   win.on('dialog', () => { dialogFired = true; });
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // renderHTMLPreview() writes content into a sandboxed srcdoc iframe inside #content.
   // Use frameLocator to reach into the iframe's document.

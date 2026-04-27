@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-contextBridge.exposeInMainWorld('formatpad', {
+contextBridge.exposeInMainWorld('orpad', {
   platform: process.platform,
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
   // AI provider keys: desktop secrets stay encrypted in the main process store.

@@ -11,7 +11,7 @@ test('HTML preview: XSS vectors are neutralized by DOMPurify + iframe sandbox', 
   let dialogFired = false;
   win.on('dialog', () => { dialogFired = true; });
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // Wait for the HTML preview iframe to render
   const preview = win.locator('#content');

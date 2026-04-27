@@ -1,5 +1,5 @@
-// FormatPad browser platform adapter.
-// Shims window.formatpad so the Electron-shaped renderer runs unchanged in a browser.
+// OrPAD browser platform adapter.
+// Shims window.orpad so the Electron-shaped renderer runs unchanged in a browser.
 //
 // Workspace features (file tree / workspace search / wiki-link backlinks) work
 // on Chromium-based browsers via the File System Access API. On browsers
@@ -657,8 +657,8 @@ function downloadBlob(fileName, blob) {
 }
 
 function defaultSaveName() {
-  const m = (document.title || '').match(/^(?:•\s*)?(.+?)\s*-\s*FormatPad$/);
-  if (m && m[1] && m[1] !== 'FormatPad') return m[1];
+  const m = (document.title || '').match(/^(?:•\s*)?(.+?)\s*-\s*OrPAD$/);
+  if (m && m[1] && m[1] !== 'OrPAD') return m[1];
   return 'untitled.txt';
 }
 
@@ -669,8 +669,8 @@ async function saveViaHandle(handle, content) {
 }
 
 async function saveFile(filePath, content) {
-  if (filePath === 'localStorage:fp-user-snippets') {
-    localStorage.setItem('fp-user-snippets', content);
+  if (filePath === 'localStorage:orpad-user-snippets') {
+    localStorage.setItem('orpad-user-snippets', content);
     return true;
   }
   // Workspace file?
@@ -1124,13 +1124,13 @@ const adapter = {
   updateAction() {},
 };
 
-window.formatpad = adapter;
+window.orpad = adapter;
 
 // Any workspace path persisted from a prior desktop session on the same origin
 // would be meaningless here (no FSA handle). Clear once.
 try {
-  if (localStorage.getItem('fp-workspace-path')) {
-    localStorage.removeItem('fp-workspace-path');
+  if (localStorage.getItem('orpad-workspace-path')) {
+    localStorage.removeItem('orpad-workspace-path');
   }
 } catch {}
 

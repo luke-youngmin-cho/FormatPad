@@ -3,12 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { launchElectron } from '../helpers';
 
-test('desktop app launches, window title contains FormatPad', async () => {
+test('desktop app launches, window title contains OrPAD', async () => {
   const app = await launchElectron();
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await expect(win).toHaveTitle(/FormatPad/);
+  await expect(win).toHaveTitle(/OrPAD/);
   await expect(win.locator('#btn-ai')).toBeVisible();
   await expect(win.locator('#btn-mcp')).toHaveCount(0);
   await expect(win.locator('#btn-git')).toHaveCount(0);
@@ -28,7 +28,7 @@ test('desktop app launches, window title contains FormatPad', async () => {
 
   await win.locator('#btn-ai').click();
   await expect(win.locator('.ai-sidebar')).toBeVisible();
-  await win.evaluate(() => (window as any).formatpadCommands.runCommand('file.new'));
+  await win.evaluate(() => (window as any).orpadCommands.runCommand('file.new'));
   await expect(win.locator('.ai-context-chip')).toContainText(/Context:|컨텍스트:/);
 
   const userData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
@@ -54,8 +54,10 @@ test('desktop app launches, window title contains FormatPad', async () => {
   await expect(filesystemCard.locator('input[type="checkbox"]')).not.toBeChecked();
   await win.locator('.ai-mcp-panel > .ai-actions-head .ai-mcp-actions button').nth(0).click();
   await expect(win.locator('.ai-action-status')).toBeVisible();
-  const savedMcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8'));
-  expect(savedMcpConfig.servers.find((server: { id?: string }) => server.id === 'filesystem')?.enabled).toBe(false);
+  await expect.poll(() => {
+    const savedMcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8'));
+    return savedMcpConfig.servers.find((server: { id?: string }) => server.id === 'filesystem')?.enabled;
+  }).toBe(false);
   const mcpCardButtons = filesystemCard.locator('.ai-mcp-actions button');
   await mcpCardButtons.nth(1).click();
   await expect(win.locator('.ai-action-status')).toContainText('Filesystem (workspace)');
@@ -124,7 +126,7 @@ test('desktop app launches, window title contains FormatPad', async () => {
   await win.mouse.up();
   const detachedTerminal = await detachedWindowPromise;
   await detachedTerminal.waitForLoadState('domcontentloaded');
-  await expect(detachedTerminal).toHaveTitle(/FormatPad (Terminal|터미널)/);
+  await expect(detachedTerminal).toHaveTitle(/OrPAD (Terminal|터미널)/);
   await expect(detachedTerminal.locator('.terminal-pty-root')).toBeVisible();
   await expect(detachedTerminal.locator('.terminal-new-popover')).toBeHidden();
   await expect(win.locator('.terminal-panel')).toBeHidden();
@@ -139,7 +141,7 @@ test('desktop app launches, window title contains FormatPad', async () => {
   await expect(win.locator('.terminal-panel')).toHaveClass(/terminal-layout-bottom/);
   await expect.poll(async () => app.windows().length).toBe(1);
 
-  await win.evaluate(() => (window as any).formatpadCommands.runCommand('git.openPanel'));
+  await win.evaluate(() => (window as any).orpadCommands.runCommand('git.openPanel'));
   await expect(win.locator('#fmt-modal')).toBeVisible();
 
   await app.close();
@@ -165,7 +167,7 @@ test('closing the main window also closes detached terminal windows', async () =
 
     const detachedTerminal = await detachedWindowPromise;
     await detachedTerminal.waitForLoadState('domcontentloaded');
-    await expect(detachedTerminal).toHaveTitle(/FormatPad (Terminal|터미널)/);
+    await expect(detachedTerminal).toHaveTitle(/OrPAD (Terminal|터미널)/);
     await expect.poll(async () => app.windows().length).toBe(2);
 
     const mainClosed = win.waitForEvent('close');

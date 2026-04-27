@@ -1,4 +1,4 @@
-# FormatPad E2E Smoke Tests
+# OrPAD E2E Smoke Tests
 
 Playwright test suite covering 15 critical paths in the desktop (Electron) and web builds.
 

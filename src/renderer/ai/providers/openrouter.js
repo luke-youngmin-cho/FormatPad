@@ -18,8 +18,8 @@ export default {
       abortSignal,
       tools,
       extraHeaders: {
-        'HTTP-Referer': 'https://formatpad.local',
-        'X-Title': 'FormatPad',
+        'HTTP-Referer': 'https://orpad.local',
+        'X-Title': 'OrPAD',
       },
     });
   },

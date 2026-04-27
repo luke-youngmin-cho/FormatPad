@@ -1,7 +1,7 @@
 {
-  "name": "FormatPad",
-  "short_name": "FormatPad",
-  "description": "AI-native document & data workbench",
+  "name": "OrPAD",
+  "short_name": "OrPAD",
+  "description": "Orchestration Pipeline Authoring & Development workspace",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -53,7 +53,7 @@ test('web URL fetch rejects bodies over the safety cap', async ({ page }) => {
   await page.goto(url);
   const message = await page.evaluate(async () => {
     try {
-      await (window as any).formatpad.fetchUrlText('https://example.com/large.md', { skipHostConfirmation: true });
+      await (window as any).orpad.fetchUrlText('https://example.com/large.md', { skipHostConfirmation: true });
       return null;
     } catch (err) {
       return (err as Error).message;

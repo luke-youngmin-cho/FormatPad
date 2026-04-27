@@ -1483,8 +1483,8 @@ body.terminal-docked-right #workspace {
 .cm-git-added { background: var(--syntax-added); }
 .cm-git-modified { background: var(--syntax-meta); }
 .cm-git-deleted { background: var(--syntax-deleted); }
-.cm-editor.fp-minimap-enabled .cm-scroller { padding-right: 78px; }
-.fp-minimap {
+.cm-editor.orpad-minimap-enabled .cm-scroller { padding-right: 78px; }
+.orpad-minimap {
   position: absolute;
   top: 0;
   right: 0;
@@ -1497,15 +1497,15 @@ body.terminal-docked-right #workspace {
   cursor: pointer;
   transition: opacity 0.15s;
 }
-.fp-minimap:hover { opacity: 1; }
-.fp-minimap-canvas {
+.orpad-minimap:hover { opacity: 1; }
+.orpad-minimap-canvas {
   display: block;
   width: 72px;
   height: 100%;
 }
 @media (max-width: 760px) {
-  .cm-editor.fp-minimap-enabled .cm-scroller { padding-right: 0; }
-  .fp-minimap { display: none; }
+  .cm-editor.orpad-minimap-enabled .cm-scroller { padding-right: 0; }
+  .orpad-minimap { display: none; }
 }
 
 /* CodeMirror syntax tokens (classHighlighter) */

@@ -23,7 +23,7 @@ class GitHunkMarker extends GutterMarker {
     marker.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      view.dom.dispatchEvent(new CustomEvent('formatpad-git-revert-hunk', {
+      view.dom.dispatchEvent(new CustomEvent('orpad-git-revert-hunk', {
         detail: { hunk: this.hunk },
         bubbles: true,
       }));

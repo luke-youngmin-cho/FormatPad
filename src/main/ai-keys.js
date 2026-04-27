@@ -317,8 +317,8 @@ async function runProviderChat({ app, safeStorage, request, signal, emit }) {
       signal,
       emit,
       extraHeaders: {
-        'HTTP-Referer': 'https://formatpad.local',
-        'X-Title': 'FormatPad',
+        'HTTP-Referer': 'https://orpad.local',
+        'X-Title': 'OrPAD',
       },
     });
     return;

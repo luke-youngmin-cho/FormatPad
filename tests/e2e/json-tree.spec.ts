@@ -8,7 +8,7 @@ test('JSON file displays tree view with expected keys', async () => {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
 
-  await win.evaluate((p: string) => window.formatpad.dropFile(p), fixturePath);
+  await win.evaluate((p: string) => window.orpad.dropFile(p), fixturePath);
 
   // Wait for the JSON tree to render
   await expect(win.locator('.jedit-tree')).toBeVisible({ timeout: 8000 });
