@@ -1,0 +1,31 @@
+{
+  "kind": "orpad.graph",
+  "schemaVersion": "1.0",
+  "version": "1.0",
+  "id": "maintenance-workstream-example-main",
+  "label": "Maintenance Workstream Example Main Graph",
+  "role": "entry",
+  "graph": {
+    "nodes": [
+      {
+        "id": "maintenance-workstream",
+        "type": "orpad.graph",
+        "label": "Maintenance Workstream",
+        "config": {
+          "graphRef": "orpad.workstream:maintenance-workstream",
+          "viewMode": "nested-layer",
+          "executionMode": "inline",
+          "inputs": {
+            "workspaceContext": "context.workspace"
+          },
+          "outputs": {
+            "doneItems": "queue.done",
+            "blockedItems": "queue.blocked",
+            "rejectedItems": "queue.rejected"
+          }
+        }
+      }
+    ],
+    "transitions": []
+  }
+}

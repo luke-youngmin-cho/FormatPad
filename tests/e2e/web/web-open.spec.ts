@@ -154,6 +154,213 @@ async function installStoppedMcpMock(page: Page): Promise<void> {
   });
 }
 
+async function installWorkspacePickerMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    function fileHandle(name: string) {
+      return {
+        kind: 'file',
+        name,
+        async getFile() {
+          return new File(['fixture'], name, { type: 'text/plain' });
+        },
+      };
+    }
+
+    function dirHandle(name: string, entries: Record<string, any>) {
+      return {
+        kind: 'directory',
+        name,
+        async *entries() {
+          for (const [entryName, entry] of Object.entries(entries)) {
+            yield [entryName, entry];
+          }
+        },
+      };
+    }
+
+    const generated = dirHandle('generated', {
+      'latest-run': dirHandle('latest-run', {
+        artifacts: dirHandle('artifacts', {
+          'summary.md': fileHandle('summary.md'),
+        }),
+        queue: dirHandle('queue', {
+          'journal.jsonl': fileHandle('journal.jsonl'),
+        }),
+      }),
+    });
+
+    const workspace = dirHandle('workspace', {
+      'README.md': fileHandle('README.md'),
+      '.orpad': dirHandle('.orpad', {
+        pipelines: dirHandle('pipelines', {
+          fixture: dirHandle('fixture', {
+            'pipeline.or-pipeline': fileHandle('pipeline.or-pipeline'),
+            harness: dirHandle('harness', { generated }),
+          }),
+        }),
+      }),
+    });
+
+    (window as any).showDirectoryPicker = async () => workspace;
+  });
+}
+
+async function installPipelineValidationWorkspaceMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    function fileHandle(name: string, content: string) {
+      return {
+        kind: 'file',
+        name,
+        async getFile() {
+          return new File([content], name, { type: 'application/json' });
+        },
+      };
+    }
+
+    function dirHandle(name: string, entries: Record<string, any>) {
+      return {
+        kind: 'directory',
+        name,
+        async *entries() {
+          for (const [entryName, entry] of Object.entries(entries)) {
+            yield [entryName, entry];
+          }
+        },
+      };
+    }
+
+    const childGraph = JSON.stringify({
+      kind: 'orpad.graph',
+      version: '1.0',
+      graph: {
+        id: 'child',
+        nodes: [
+          { id: 'dispatch', type: 'orpad.dispatcher', label: 'Dispatch', config: { queueRef: 'queue' } },
+        ],
+        transitions: [],
+      },
+    });
+
+    const mainGraph = JSON.stringify({
+      kind: 'orpad.graph',
+      version: '1.0',
+      graph: {
+        id: 'main',
+        nodes: [
+          { id: 'gate', type: 'orpad.gate', label: 'Gate', config: { criteria: ['local only'] } },
+          { id: 'queue', type: 'orpad.workQueue', label: 'Queue', config: { queueRoot: 'harness/generated/latest-run/queue', schema: 'custom.workItem.v9' } },
+          { id: 'dispatch', type: 'orpad.dispatcher', label: 'Dispatch', config: { queueRef: 'gate', workerLoopRef: 'queue' } },
+          { id: 'child', type: 'orpad.graph', label: 'Child graph', config: { graphRef: 'child.or-graph' } },
+          { id: 'unknown', type: 'orpad.notARealNode', label: 'Unknown node' },
+        ],
+        transitions: [
+          { from: 'gate', to: 'missing-node' },
+        ],
+      },
+    });
+
+    const pipeline = JSON.stringify({
+      kind: 'orpad.pipeline',
+      version: '1.0',
+      id: 'web-ref-contract-validation',
+      trustLevel: 'local-authored',
+      entryGraph: 'graphs/main.or-graph',
+      graphs: [
+        { id: 'main', file: 'graphs/main.or-graph' },
+        { id: 'child', file: 'graphs/child.or-graph' },
+      ],
+      run: {
+        queueProtocol: {
+          schema: 'custom.workItem.v9',
+          states: ['candidate', 'queued', 'claimed'],
+        },
+      },
+    });
+
+    const workspace = dirHandle('workspace', {
+      '.orpad': dirHandle('.orpad', {
+        pipelines: dirHandle('pipelines', {
+          fixture: dirHandle('fixture', {
+            'pipeline.or-pipeline': fileHandle('pipeline.or-pipeline', pipeline),
+            graphs: dirHandle('graphs', {
+              'main.or-graph': fileHandle('main.or-graph', mainGraph),
+              'child.or-graph': fileHandle('child.or-graph', childGraph),
+            }),
+          }),
+        }),
+      }),
+    });
+
+    (window as any).showDirectoryPicker = async () => workspace;
+  });
+}
+
+async function installPipelineSkillTreeValidationWorkspaceMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    function fileHandle(name: string, content: string) {
+      return {
+        kind: 'file',
+        name,
+        async getFile() {
+          return new File([content], name, { type: 'application/json' });
+        },
+      };
+    }
+
+    function dirHandle(name: string, entries: Record<string, any>) {
+      return {
+        kind: 'directory',
+        name,
+        async *entries() {
+          for (const [entryName, entry] of Object.entries(entries)) {
+            yield [entryName, entry];
+          }
+        },
+      };
+    }
+
+    const mainGraph = JSON.stringify({
+      kind: 'orpad.graph',
+      version: '1.0',
+      graph: {
+        id: 'skill-tree-parity',
+        nodes: [
+          { id: 'missing-skill-id', type: 'orpad.skill', label: 'Missing skill id', config: { skillRef: 'not-declared' } },
+          { id: 'missing-skill-file', type: 'orpad.skill', label: 'Missing skill file', config: { file: '../skills/missing.md' } },
+          { id: 'missing-tree', type: 'orpad.tree', label: 'Missing tree', config: { treeRef: '../trees/missing.or-tree' } },
+        ],
+        transitions: [],
+      },
+    });
+
+    const pipeline = JSON.stringify({
+      kind: 'orpad.pipeline',
+      version: '1.0',
+      id: 'web-skill-tree-validation',
+      trustLevel: 'local-authored',
+      entryGraph: 'graphs/main.or-graph',
+      graphs: [{ id: 'main', file: 'graphs/main.or-graph' }],
+    });
+
+    const workspace = dirHandle('workspace', {
+      '.orpad': dirHandle('.orpad', {
+        pipelines: dirHandle('pipelines', {
+          fixture: dirHandle('fixture', {
+            'pipeline.or-pipeline': fileHandle('pipeline.or-pipeline', pipeline),
+            graphs: dirHandle('graphs', {
+              'main.or-graph': fileHandle('main.or-graph', mainGraph),
+            }),
+            skills: dirHandle('skills', {}),
+            trees: dirHandle('trees', {}),
+          }),
+        }),
+      }),
+    });
+
+    (window as any).showDirectoryPicker = async () => workspace;
+  });
+}
+
 test('web build loads, new-file works, no console errors', async ({ page }) => {
   if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
     test.skip(true, 'docs/ not built — run npm run build:web:min first');
@@ -190,6 +397,22 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
   await page.evaluate(() => (window as any).orpadCommands.runCommand('file.new'));
   await expect(page.locator('.ai-context-chip')).toContainText('Context: Untitled');
 
+  const treeValidation = await page.evaluate(async () => {
+    return await (window as any).orpad.pipelines.validateText(JSON.stringify({
+      kind: 'orpad.tree',
+      version: '1.0',
+      root: {
+        id: 'root',
+        type: 'Sequence',
+        children: [
+          { id: 'context', type: 'Context' },
+        ],
+      },
+    }));
+  });
+  expect(treeValidation.ok).toBe(true);
+  expect(treeValidation.treeCount).toBe(1);
+
   await page.locator('.ai-mode-tabs button[data-mode="mcp"]').click();
   await expect(page.locator('.ai-mcp-panel')).toBeVisible();
   await expect(page.locator('.ai-mcp-panel')).toContainText('MCP is desktop-only');
@@ -208,6 +431,141 @@ test('web build loads, new-file works, no console errors', async ({ page }) => {
   expect(realErrors).toHaveLength(0);
 
   await close();
+});
+
+test('web pipeline scanner excludes generated harness evidence', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installWorkspacePickerMock(page);
+
+  await page.goto(url);
+  await page.waitForLoadState('domcontentloaded');
+  await page.evaluate(async () => {
+    await (window as any).orpad.openFolderDialog();
+  });
+  const scan = await page.evaluate(async () => {
+    return await (window as any).orpad.pipelines.scanWorkspace();
+  });
+
+  expect(scan.success).toBe(true);
+  expect(scan.fileCount).toBe(2);
+  expect(scan.markdownCount).toBe(1);
+  expect(scan.dataCount).toBe(0);
+  expect(scan.pipelines.map((item: { path: string }) => item.path)).toContain('/.orpad/pipelines/fixture/pipeline.or-pipeline');
+
+  await close();
+});
+
+test('web pipeline validator follows nested graph refs and queue contracts', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installPipelineValidationWorkspaceMock(page);
+
+  await page.goto(url);
+  await page.waitForLoadState('domcontentloaded');
+  await page.evaluate(async () => {
+    await (window as any).orpad.openFolderDialog();
+  });
+  const validation = await page.evaluate(async () => {
+    return await (window as any).orpad.pipelines.validateFile('/.orpad/pipelines/fixture/pipeline.or-pipeline');
+  });
+  const diagnosticCodes = validation.diagnostics.map((item: { code: string }) => item.code);
+
+  expect(validation.ok).toBe(false);
+  expect(validation.graphCount).toBe(2);
+  expect(validation.nodeTypes).toContain('orpad.graph');
+  expect(validation.nodeTypes).toContain('orpad.dispatcher');
+  expect(diagnosticCodes).toContain('GRAPH_NODE_CONFIG_MISSING');
+  expect(diagnosticCodes).toContain('GRAPH_QUEUE_REF_INVALID_TARGET');
+  expect(diagnosticCodes).toContain('GRAPH_WORKER_LOOP_REF_INVALID_TARGET');
+  expect(diagnosticCodes).toContain('GRAPH_TRANSITION_TO_UNKNOWN');
+  expect(diagnosticCodes).toContain('GRAPH_NODE_TYPE_UNKNOWN');
+  expect(diagnosticCodes).toContain('WORK_QUEUE_SCHEMA_UNSUPPORTED');
+  expect(diagnosticCodes).toContain('PIPELINE_QUEUE_PROTOCOL_SCHEMA_UNSUPPORTED');
+  expect(diagnosticCodes).toContain('PIPELINE_QUEUE_PROTOCOL_STATES_INCOMPLETE');
+
+  await close();
+});
+
+test('web pipeline validator checks OrPAD skill and tree graph refs', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+  await installPipelineSkillTreeValidationWorkspaceMock(page);
+
+  await page.goto(url);
+  await page.waitForLoadState('domcontentloaded');
+  await page.evaluate(async () => {
+    await (window as any).orpad.openFolderDialog();
+  });
+  const validation = await page.evaluate(async () => {
+    return await (window as any).orpad.pipelines.validateFile('/.orpad/pipelines/fixture/pipeline.or-pipeline');
+  });
+  const diagnostics = validation.diagnostics as Array<{ code: string; nodeId?: string }>;
+
+  expect(validation.ok).toBe(false);
+  expect(validation.nodeTypes).toContain('orpad.skill');
+  expect(validation.nodeTypes).toContain('orpad.tree');
+  expect(diagnostics).toContainEqual(expect.objectContaining({ code: 'SKILL_FILE_MISSING', nodeId: 'missing-skill-id' }));
+  expect(diagnostics).toContainEqual(expect.objectContaining({ code: 'SKILL_FILE_NOT_FOUND', nodeId: 'missing-skill-file' }));
+  expect(diagnostics).toContainEqual(expect.objectContaining({ code: 'ORCH_TREE_NOT_FOUND', nodeId: 'missing-tree' }));
+
+  await close();
+});
+
+test('web opens OrPAD graph files with visual graph preview', async ({ page }) => {
+  if (!fs.existsSync(path.join(docsDir, 'index.html'))) {
+    test.skip(true, 'docs/ not built - run npm run build:web:min first');
+    return;
+  }
+
+  const { url, close } = await startStaticServer(docsDir);
+
+  try {
+    await page.goto(url);
+    await page.waitForLoadState('domcontentloaded');
+
+    const opened = await page.evaluate(async () => {
+      const graph = JSON.stringify({
+        kind: 'orpad.graph',
+        version: '1.0',
+        graph: {
+          id: 'web-preview',
+          nodes: [
+            { id: 'context', type: 'orpad.context', label: 'Collect web facts' },
+            { id: 'gate', type: 'orpad.gate', label: 'Review web graph', config: { criteria: ['Preview renders'] } },
+          ],
+          transitions: [{ from: 'context', to: 'gate' }],
+        },
+      }, null, 2);
+      return await (window as any).orpad.openFileHandles([{
+        kind: 'file',
+        name: 'web-preview.or-graph',
+        getFile: async () => new File([graph], 'web-preview.or-graph', { type: 'application/json' }),
+      }]);
+    });
+
+    expect(opened).toBe(true);
+    await expect(page.locator('.tab-item')).toContainText('web-preview.or-graph');
+    await page.locator('#btn-preview').click();
+    await expect(page.locator('.orch-preview')).toContainText('orch-graph editor');
+    await expect(page.locator('.orch-graph-node')).toHaveCount(2);
+    await expect(page.locator('.orch-graph-node')).toContainText(['Collect web facts', 'Review web graph']);
+    await expect(page.locator('.orch-transition')).toHaveCount(1);
+  } finally {
+    await close();
+  }
 });
 
 test('MCP tool lists are collapsible and explain argument schemas', async ({ page }) => {
@@ -454,6 +812,13 @@ test('web PWA assets are self-contained for offline install', async () => {
   expect(manifest.start_url).toBe('./');
   expect(manifest.scope).toBe('./');
   expect(manifest.file_handlers?.[0]?.action).toBe('./');
+  expect(manifest.file_handlers?.[0]?.accept?.['application/json']).toEqual(expect.arrayContaining([
+    '.or-pipeline',
+    '.or-graph',
+    '.or-tree',
+    '.or-rule',
+    '.or-run',
+  ]));
 
   const sw = fs.readFileSync(path.join(docsDir, 'sw.js'), 'utf-8');
   expect(sw).not.toContain('storage.googleapis.com');

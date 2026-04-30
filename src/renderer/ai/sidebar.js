@@ -1575,6 +1575,10 @@ export function createAISidebar({ workspaceEl, hooks, keyStore, conversationStor
       toggle(true);
       openProviderSettings();
     },
+    canUseProvider() {
+      return !providerUsesStoredKey() || !!keyStatus.providers?.[provider.id]?.hasKey;
+    },
+    complete: completeWithProvider,
     runLastAction: runLastActionCommand,
     refreshLocale,
   };

@@ -310,6 +310,7 @@
         <button class="sidebar-tab" data-panel="search" data-i18n="header.search">Search</button>
         <button class="sidebar-tab" data-panel="toc" data-i18n="header.toc">TOC</button>
         <button class="sidebar-tab" data-panel="backlinks" data-i18n="header.backlinks">Links</button>
+        <button class="sidebar-tab" data-panel="runbooks">Pipes</button>
       </div>
       <!-- File tree panel -->
       <div id="sidebar-files" class="sidebar-panel active">
@@ -356,6 +357,10 @@
       <!-- Backlinks panel -->
       <div id="sidebar-backlinks" class="sidebar-panel">
         <div id="backlinks-content"></div>
+      </div>
+      <!-- Pipeline / workspace cockpit panel -->
+      <div id="sidebar-runbooks" class="sidebar-panel">
+        <div id="runbooks-content"></div>
       </div>
     </aside>
     <div id="sidebar-resize"></div>
@@ -412,6 +417,18 @@
       </div>
     </div>
     <div id="theme-panel-body">
+      <div id="ui-scale-control">
+        <div class="ui-scale-card">
+          <div class="theme-section-label ui-scale-label">
+            <span>UI Scale</span>
+            <span class="ui-scale-value" data-us-v>100%</span>
+          </div>
+          <div class="ui-scale-row">
+            <input data-us-i type="range" min="85" max="125" step="5" value="100" aria-label="UI Scale">
+            <button class="ui-scale-reset" type="button" data-us-r>Reset</button>
+          </div>
+        </div>
+      </div>
       <div id="theme-list"></div>
       <div id="customize-fields" class="hidden"></div>
     </div>
@@ -441,6 +458,7 @@
     <button id="ctx-delete" data-i18n="context.delete">Delete</button>
   </div>
 
+  <script src="ui-scale.js"></script>
   <script src="../../dist/renderer.js"></script>
 </body>
 </html>

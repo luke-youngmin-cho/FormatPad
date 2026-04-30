@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { registerAiKeyHandlers } = require('./ai-keys');
 const { registerAiConversationHandlers } = require('./ai-conversations');
 const { registerMcpHandlers } = require('./mcp/ipc');
+const { registerRunbookHandlers } = require('./runbooks/ipc');
 const { registerTerminalHandlers } = require('./terminal/ipc');
 const { createAuthorityManager, isInsidePath } = require('./authority');
 
@@ -164,7 +165,7 @@ app.on('second-instance', (_event, argv) => {
 // --- Supported file formats ---
 // SUPPORTED_EXTS is the allow-list shown in open/save dialog filters (UX hint).
 // isSupportedFile uses a binary block-list so that unknown text files still open.
-const SUPPORTED_EXTS = ['md', 'markdown', 'mkd', 'mdx', 'mmd', 'json', 'yaml', 'yml', 'html', 'htm', 'xml', 'csv', 'tsv', 'toml', 'ini', 'conf', 'properties', 'env', 'log', 'txt'];
+const SUPPORTED_EXTS = ['md', 'markdown', 'mkd', 'mdx', 'mmd', 'json', 'yaml', 'yml', 'html', 'htm', 'xml', 'csv', 'tsv', 'toml', 'ini', 'conf', 'properties', 'env', 'log', 'txt', 'or-pipeline', 'or-graph', 'or-tree', 'or-rule', 'or-run'];
 const BINARY_EXTS = new Set([
   'exe','dll','so','dylib','bin','msi','app','class','jar',
   'zip','rar','7z','tar','gz','bz2','xz',
@@ -463,6 +464,7 @@ ipcMain.handle('get-app-info', () => ({
 registerAiKeyHandlers({ ipcMain, app, safeStorage });
 registerAiConversationHandlers({ ipcMain, authority });
 registerMcpHandlers({ ipcMain, app, authority });
+registerRunbookHandlers({ ipcMain, app, authority });
 registerTerminalHandlers({ ipcMain, app, authority });
 
 ipcMain.handle('terminal-window-open', async (event, request = {}) => {

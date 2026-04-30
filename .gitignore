@@ -21,3 +21,10 @@ state/bundle-meta.json
 # Playwright test output
 test-results/
 playwright-report/
+
+# OrPAD local run evidence
+.orpad/**/runs/
+.orch-runs/
+
+# OrPAD generated manual harness output
+.orpad/**/harness/generated/**

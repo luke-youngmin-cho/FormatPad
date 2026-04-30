@@ -179,6 +179,10 @@ async function main() {
       copyFile(path.join(stylesDir, name), path.join(OUT, 'styles', name));
     }
   }
+  copyFile(
+    path.join(ROOT, 'src/renderer/ui-scale.js'),
+    path.join(OUT, 'ui-scale.js')
+  );
   copyDir(
     path.join(ROOT, 'node_modules/katex/dist/fonts'),
     path.join(OUT, 'styles', 'fonts')

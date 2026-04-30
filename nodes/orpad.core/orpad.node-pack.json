@@ -1,0 +1,57 @@
+{
+  "kind": "orpad.nodePack",
+  "schemaVersion": "1.0",
+  "id": "orpad.core",
+  "name": "OrPAD Core Nodes",
+  "version": "1.0.0-beta.3",
+  "origin": "built-in",
+  "trustLevel": "official",
+  "mutable": false,
+  "description": "Core OrPAD orchestration primitives shared by pipelines, graphs, trees, and node packs.",
+  "author": {
+    "name": "OrPAD",
+    "github": "https://github.com/luke-youngmin-cho/OrPAD",
+    "repository": "https://github.com/luke-youngmin-cho/OrPAD"
+  },
+  "license": "MIT",
+  "compatibility": {
+    "orpad": ">=1.0.0-beta.3",
+    "pipelineSchema": ">=1.0"
+  },
+  "capabilities": [],
+  "nodes": [
+    {
+      "type": "orpad.graph",
+      "path": "nodes/graph.or-node"
+    },
+    {
+      "type": "orpad.tree",
+      "path": "nodes/tree.or-node"
+    },
+    {
+      "type": "orpad.context",
+      "path": "nodes/context.or-node"
+    },
+    {
+      "type": "orpad.skill",
+      "path": "nodes/skill.or-node"
+    },
+    {
+      "type": "orpad.rule",
+      "path": "nodes/rule.or-node"
+    },
+    {
+      "type": "orpad.gate",
+      "path": "nodes/gate.or-node"
+    },
+    {
+      "type": "orpad.artifactContract",
+      "path": "nodes/artifact-contract.or-node"
+    }
+  ],
+  "graphs": [],
+  "trees": [],
+  "skills": [],
+  "rules": [],
+  "examples": []
+}

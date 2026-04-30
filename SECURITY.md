@@ -46,13 +46,16 @@ process is fully sandboxed with no direct Node.js access.
 | `createFile(filePath)` / `createFolder` / `renameFile` / `deleteFile` | filesystem mutations | MEDIUM |
 | `searchFiles(dirPath, query, options)` | workspace search | MEDIUM |
 | `buildLinkIndex` / `resolveWikiLink` / `getBacklinks` / `getFileNames` | wiki-link graph | MEDIUM |
+| `pipelines.*` / `runbooks.*` validation, scan, run-record, and local-run APIs | `.or-pipeline`, `.or-graph`, `.or-tree`, and legacy `.orch-*` validation plus local MVP run evidence | HIGH (future execution substrate) |
 | `revealInExplorer(targetPath)` | `shell.showItemInFolder` | LOW |
 | `saveBinary` / `saveText` | save-dialog before write | LOW |
 | `svgToPng(svg, w, h, bg)` | offscreen BrowserWindow render | LOW |
 | `onShowUpdateDialog` / `onUpdateProgress` / `onUpdateError` / `updateAction` | auto-updater UI | LOW |
 
-No Node.js or Electron internals are exposed directly. All MEDIUM-risk methods require
-renderer code to supply a filesystem path; see IPC Handlers section for path-validation gap.
+No Node.js or Electron internals are exposed directly. Filesystem and pipeline/runbook methods that
+accept paths must go through the main-process authority model described in IPC Handlers.
+`dropFile()` and `getPathForFile()` accept string paths only when the Electron test harness sets
+`ORPAD_TEST_USER_DATA`; production builds require browser `File` objects for dropped files.
 
 **preload.js - MCP surface** (`window.mcp`, desktop only):
 
@@ -205,6 +208,18 @@ through the same transient renderer-memory attachment path used by Command Runne
 ordinary unsaved Markdown tabs until the user saves them. Template status is derived from the
 active document/frontmatter and is not stored separately.
 
+**P2 OrPAD Pipeline MVP storage:** Pipeline validation and workspace fact scanning are exposed
+through desktop IPC. The scanner returns counts and candidate file paths only; it does not read
+arbitrary workspace file contents. A metadata-only workspace index snapshot is cached under app
+`userData` at `workspace-index/{workspaceHash}.json`; it stores counts, relative pipeline and
+legacy runbook paths, redaction candidates, and marker state, with `contentIncluded: false`.
+Pipeline-local MVP runs write only under the approved workspace's
+`.orpad/pipelines/<pipeline>/runs/{runId}/` directory and currently include `run.or-run`,
+`events.jsonl`, `context/context-manifest.json`, `artifacts/manifest.json`,
+`artifacts/claim-register.md`, and empty `checkpoints/` folders. Legacy `.orch-*` targets continue
+to write under `.orch-runs/{runId}/run.json`. The context manifest records included/excluded path
+metadata and token estimates, not raw context file contents.
+
 ## MCP security model
 
 P1-3 introduces an MCP client in the Electron main process. This intentionally changes the
@@ -272,6 +287,42 @@ powerful than Command Runner and should be treated like an embedded VS Code term
   creates a reviewable draft. Multiline drafts are copy-only to avoid accidental execution.
 - Web builds replace the PTY view with a stub and do not expose `window.pty`.
 
+## OrPAD Pipeline MVP security model
+
+P2 introduces the first OrPAD Pipeline substrate for `.or-pipeline`, `.or-graph`, and `.or-tree`
+files while preserving legacy `.orch-tree.json` and `.orch-graph.json` compatibility. This slice
+validates pipelines and creates minimal local run records; it does not yet execute AI, terminal,
+MCP, URL, or file-write pipeline steps.
+
+- Pipeline file reads use the same renderer authority model as ordinary workspace files.
+- Workspace pipeline scanning is metadata-only and stays inside the approved workspace.
+- Referenced Skill, Rule, Graph, and Tree files must stay inside the pipeline directory for MVP
+  validation. Existing referenced files are checked with realpath-based containment so symlinks
+  cannot point a pipeline ref outside its allowed root. Legacy `.orch-*` Skill refs must stay
+  inside the legacy runbook directory.
+- `Generate Pipeline` may use the existing configured AI provider to draft the
+  referenced Skill Markdown from the user's typed task. It uses the same
+  `ai-provider-chat` proxy/key-storage rules as the AI sidebar and falls back
+  to a local template when no provider is available.
+- Imported or generated trust levels (`imported-review`, `generated-draft`, `unknown`) are
+  marked as review-required and are not executable. A file-declared trust level wins over caller
+  options so renderer/API defaults cannot promote an imported pipeline to executable.
+- MVP executable node types are limited to `Sequence`, `Skill`, `Gate`, `Context`, simple
+  `Retry`, simple `Timeout`, `OrchTree`, and the canonical node-pack equivalents
+  `orpad.context`, `orpad.gate`, `orpad.skill`, and `orpad.tree`. Other valid
+  orchestration node types are render/validate-only.
+- Minimal pipeline run records can be created only inside the approved workspace under
+  `.orpad/pipelines/<pipeline>/runs/` for canonical packages, or beside a noncanonical
+  workspace-local `.or-pipeline` under `runs/`; legacy records remain restricted to
+  `.orch-runs/`. Readback verifies the recorded pipeline path before allowing noncanonical
+  sibling `runs/` directories.
+- `startLocalRun()` is a local MVP coordinator only: it records context, approval, node lifecycle,
+  and a claim-register artifact under the target run directory; it does not execute terminal
+  commands, PTY input, MCP tools, URL fetches, provider calls, or writes outside that run directory.
+- If local-run approval is denied, `startLocalRun()` returns a blocked result before creating
+  run evidence, context manifests, or artifacts.
+- AI-suggested commands still cannot run automatically.
+
 ## URL handling
 
 **Implemented protections:**
@@ -335,6 +386,13 @@ features that intentionally launch configured/user-requested child processes.
 | `resolve-wiki-link` | handle | Path lookup within dirPath | — | **None** |
 | `get-backlinks` | handle | Read ≤1000 .md files | — | **None** |
 | `get-file-names` | handle | List .md names in dirPath | — | **None** |
+| `pipeline-validate-text` / `runbook-validate-text` | handle | Validate in-memory pipeline, graph, tree, or legacy runbook text | — | No filesystem path |
+| `pipeline-validate-file` / `runbook-validate-file` | handle | Read and validate a pipeline, graph, tree, or legacy runbook file | — | Authority guard / workspace or approved file |
+| `pipeline-scan-workspace` / `runbook-scan-workspace` | handle | Scan approved workspace metadata for pipelines, legacy runbooks, vault markers, and redaction candidates | — | Authority guard / workspace only |
+| `pipeline-read-workspace-index` / `runbook-read-workspace-index` | handle | Read the metadata-only app userData workspace index snapshot | — | Authority guard / workspace only |
+| `pipeline-create-run-record` / `runbook-create-run-record` | handle | Create minimal run evidence under `.orpad/pipelines/<pipeline>/runs/{runId}` or legacy `.orch-runs/{runId}` | — | Authority guard / workspace only |
+| `pipeline-start-local-run` / `runbook-start-local-run` | handle | Create a local MVP run record, context manifest, approval events, and claim artifact under the target run directory | — | Authority guard / workspace only |
+| `pipeline-read-run-record` / `runbook-read-run-record` | handle | Read `run.or-run` or legacy `run.json` plus `events.jsonl` from allowed run directories | — | Authority guard / `.orpad/pipelines/*/runs`, recorded workspace-local `.or-pipeline` sibling `runs`, or `.orch-runs` only |
 | `save-binary` | handle | Save dialog then binary write | reads `event.sender` | Dialog enforces |
 | `svg-to-png` | handle | Offscreen BrowserWindow render | reads `event.sender` | Validates dimensions |
 | `save-text` | handle | Save dialog then text write | reads `event.sender` | Dialog enforces |
@@ -359,12 +417,15 @@ features that intentionally launch configured/user-requested child processes.
 | `terminal.pty.resize` | handle | Resize PTY | — | sessionId only |
 | `terminal.pty.kill` | handle | Kill PTY session | — | sessionId only |
 
-**Path-validation gap (Medium):** Handlers that accept a `filePath` / `dirPath` argument
-do not validate that the path stays within any workspace root. A compromised renderer
-could issue IPC calls to read or write arbitrary filesystem locations permitted to the
-Electron process. The mitigations in place are: `sandbox: true` (renderer cannot escape
-via Node APIs), strict CSP (no inline scripts, no external scripts), and DOMPurify on
-all rendered HTML. Addressed in Follow-up #1.
+**Path authority update (P2):** Workspace file/tree/search/link/Git handlers route through the
+main-process authority manager. A renderer receives workspace authority only after an approved
+folder is restored/opened, and individual file authority only after a user-opened file flow. The
+e2e authority suite covers arbitrary outside reads/writes, sibling access after opening one file,
+approved workspace tree access, and symlink/junction escape rejection. Save-dialog flows remain
+allowed outside the workspace because the dialog is the user approval surface.
+
+Residual risk: newly added IPC handlers must keep using the authority manager. Any future
+pipeline/runbook write or execution surface must treat path authority tests as release-blocking.
 
 **Command execution boundaries:** General filesystem/editor IPC still does not expose arbitrary
 shell execution. P1-3 MCP uses the official SDK `StdioClientTransport`, which spawns the
@@ -421,13 +482,10 @@ No `eval` or dynamic code execution in the parser. **PASS.**
 
 ## Follow-ups
 
-1. **(Medium) IPC path sandbox validation** — File operation handlers (`save-file`,
-   `read-file`, `create-file`, `create-folder`, `rename-file`, `delete-file`, `read-directory`,
-   `watch-directory`, `search-files`, `build-link-index`, `get-backlinks`, etc.) do not
-   constrain paths to the user-opened workspace. Add a `isPathSafe(p, workspaceRoot)` guard
-   that resolves both paths and checks `resolved.startsWith(workspaceRoot)`. Handlers that
-   may legitimately act outside the workspace (e.g. `save-file` for files opened via dialog
-   from anywhere) should track the set of user-opened paths separately.
+1. **(Medium) Path authority maintenance** — The IPC path sandbox validation gap has been
+   addressed for current workspace/file operations with a main-process authority manager and
+   e2e coverage. Keep this as a release-blocking maintenance item for every new IPC handler,
+   especially pipeline execution, workspace indexing, import, and artifact writing.
    Priority: **P1**. Owner: maintainer.
 
 2. **(Low) `setWindowOpenHandler` allows http:// external links** — Current code opens both

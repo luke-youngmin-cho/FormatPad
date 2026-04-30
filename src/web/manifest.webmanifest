@@ -35,7 +35,12 @@
           ".markdown"
         ],
         "application/json": [
-          ".json"
+          ".json",
+          ".or-pipeline",
+          ".or-graph",
+          ".or-tree",
+          ".or-rule",
+          ".or-run"
         ],
         "application/yaml": [
           ".yaml",

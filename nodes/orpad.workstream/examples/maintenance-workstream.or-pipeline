@@ -1,0 +1,40 @@
+{
+  "kind": "orpad.pipeline",
+  "schemaVersion": "1.0",
+  "version": "1.0",
+  "id": "maintenance-workstream-example",
+  "title": "Maintenance Workstream Example",
+  "description": "Example pipeline that references the built-in maintenance workstream reusable graph.",
+  "template": true,
+  "trustLevel": "local-authored",
+  "entryGraph": "graphs/main.or-graph",
+  "graphs": {
+    "main": {
+      "file": "graphs/main.or-graph",
+      "description": "Create a main graph that uses an orpad.graph node pointing at orpad.workstream:maintenance-workstream."
+    }
+  },
+  "nodePacks": [
+    {
+      "id": "orpad.core",
+      "version": ">=1.0.0-beta.3"
+    },
+    {
+      "id": "orpad.workstream",
+      "version": ">=0.1.0"
+    }
+  ],
+  "executionPolicy": {
+    "mode": "template-only",
+    "copyBeforeRun": true,
+    "description": "Built-in examples are templates. Copy this pipeline into a workspace before executing so run artifacts are not written into the app bundle."
+  },
+  "run": {
+    "artifactRoot": ".orpad/harness/generated/latest-run/artifacts",
+    "artifactRootResolution": "workspace-root",
+    "queueRoot": ".orpad/harness/generated/latest-run/queue",
+    "queueRootResolution": "workspace-root",
+    "summaryPath": ".orpad/harness/generated/latest-run/summary.md",
+    "summaryPathResolution": "workspace-root"
+  }
+}

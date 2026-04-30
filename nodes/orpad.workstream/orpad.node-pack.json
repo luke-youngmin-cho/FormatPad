@@ -1,0 +1,83 @@
+{
+  "kind": "orpad.nodePack",
+  "schemaVersion": "1.0",
+  "id": "orpad.workstream",
+  "name": "OrPAD Workstream Nodes",
+  "version": "0.1.0",
+  "origin": "built-in",
+  "trustLevel": "official",
+  "mutable": false,
+  "description": "Queue-driven orchestration nodes for probe, triage, dispatch, worker loop, and proof workflows.",
+  "author": {
+    "name": "OrPAD",
+    "github": "https://github.com/luke-youngmin-cho/OrPAD",
+    "repository": "https://github.com/luke-youngmin-cho/OrPAD"
+  },
+  "license": "MIT",
+  "compatibility": {
+    "orpad": ">=1.0.0-beta.3",
+    "pipelineSchema": ">=1.0"
+  },
+  "dependsOn": [
+    {
+      "id": "orpad.core",
+      "version": ">=1.0.0-beta.3"
+    }
+  ],
+  "capabilities": [
+    "read.workspace",
+    "write.workspace",
+    "write.runArtifacts",
+    "run.localVerification"
+  ],
+  "nodes": [
+    {
+      "type": "orpad.probe",
+      "path": "nodes/probe.or-node"
+    },
+    {
+      "type": "orpad.workQueue",
+      "path": "nodes/work-queue.or-node"
+    },
+    {
+      "type": "orpad.triage",
+      "path": "nodes/triage.or-node"
+    },
+    {
+      "type": "orpad.dispatcher",
+      "path": "nodes/dispatcher.or-node"
+    },
+    {
+      "type": "orpad.workerLoop",
+      "path": "nodes/worker-loop.or-node"
+    },
+    {
+      "type": "orpad.barrier",
+      "path": "nodes/barrier.or-node"
+    }
+  ],
+  "graphs": [
+    {
+      "id": "maintenance-workstream",
+      "path": "graphs/maintenance-workstream.or-graph",
+      "label": "Maintenance Workstream",
+      "role": "reusable",
+      "description": "Reusable probe, queue, dispatcher, worker-loop, and proof graph pattern.",
+      "inputs": ["workspaceContext"],
+      "outputs": ["doneItems", "blockedItems", "rejectedItems"]
+    }
+  ],
+  "skills": [
+    {
+      "id": "queue-harness-validation",
+      "path": "skills/queue-harness-validation.md",
+      "description": "Validates staged parallel probe inboxes, canonical WorkQueue ingestion, and queue journal consistency."
+    }
+  ],
+  "examples": [
+    {
+      "id": "maintenance-workstream-example",
+      "path": "examples/maintenance-workstream.or-pipeline"
+    }
+  ]
+}

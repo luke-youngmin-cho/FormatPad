@@ -32,10 +32,22 @@ contextBridge.exposeInMainWorld('orpad', {
   saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
   saveFileAs: (content) => ipcRenderer.invoke('save-file-as', content),
   dropFile: (file) => {
-    const filePath = webUtils.getPathForFile(file);
+    let filePath = '';
+    if (typeof file === 'string') {
+      filePath = process.env.ORPAD_TEST_USER_DATA ? file : '';
+    } else {
+      try {
+        filePath = webUtils.getPathForFile(file);
+      } catch {
+        filePath = '';
+      }
+    }
     if (filePath) ipcRenderer.send('drop-file', filePath);
   },
-  getPathForFile: (f) => webUtils.getPathForFile(f),
+  getPathForFile: (f) => {
+    if (typeof f === 'string' && process.env.ORPAD_TEST_USER_DATA) return f;
+    return webUtils.getPathForFile(f);
+  },
   openDefaultAppsSettings: () => ipcRenderer.invoke('open-default-apps-settings'),
   showSaveDialog: () => ipcRenderer.invoke('show-save-dialog'),
   onCheckBeforeClose: (cb) => ipcRenderer.on('check-before-close', () => cb()),
@@ -81,6 +93,26 @@ contextBridge.exposeInMainWorld('orpad', {
   resolveWikiLink: (dirPath, target) => ipcRenderer.invoke('resolve-wiki-link', dirPath, target),
   getBacklinks: (dirPath, filePath) => ipcRenderer.invoke('get-backlinks', dirPath, filePath),
   getFileNames: (dirPath) => ipcRenderer.invoke('get-file-names', dirPath),
+  runbooks: {
+    validateText: (source, options) => ipcRenderer.invoke('runbook-validate-text', source, options),
+    validateFile: (filePath, options) => ipcRenderer.invoke('runbook-validate-file', filePath, options),
+    createRunRecord: (workspacePath, runbookPath, options) => ipcRenderer.invoke('runbook-create-run-record', workspacePath, runbookPath, options),
+    scanWorkspace: (workspacePath) => ipcRenderer.invoke('runbook-scan-workspace', workspacePath),
+    readWorkspaceIndex: (workspacePath) => ipcRenderer.invoke('runbook-read-workspace-index', workspacePath),
+    startLocalRun: (workspacePath, runbookPath, options) => ipcRenderer.invoke('runbook-start-local-run', workspacePath, runbookPath, options),
+    readRunRecord: (workspacePath, runDir) => ipcRenderer.invoke('runbook-read-run-record', workspacePath, runDir),
+    auditRunEvidence: (workspacePath, runbookPath) => ipcRenderer.invoke('runbook-audit-run-evidence', workspacePath, runbookPath),
+  },
+  pipelines: {
+    validateText: (source, options) => ipcRenderer.invoke('pipeline-validate-text', source, options),
+    validateFile: (filePath, options) => ipcRenderer.invoke('pipeline-validate-file', filePath, options),
+    createRunRecord: (workspacePath, pipelinePath, options) => ipcRenderer.invoke('pipeline-create-run-record', workspacePath, pipelinePath, options),
+    scanWorkspace: (workspacePath) => ipcRenderer.invoke('pipeline-scan-workspace', workspacePath),
+    readWorkspaceIndex: (workspacePath) => ipcRenderer.invoke('pipeline-read-workspace-index', workspacePath),
+    startLocalRun: (workspacePath, pipelinePath, options) => ipcRenderer.invoke('pipeline-start-local-run', workspacePath, pipelinePath, options),
+    readRunRecord: (workspacePath, runDir) => ipcRenderer.invoke('pipeline-read-run-record', workspacePath, runDir),
+    auditRunEvidence: (workspacePath, pipelinePath) => ipcRenderer.invoke('pipeline-audit-run-evidence', workspacePath, pipelinePath),
+  },
   userSnippets: {
     read: () => ipcRenderer.invoke('snippets-read'),
     ensure: () => ipcRenderer.invoke('snippets-ensure'),

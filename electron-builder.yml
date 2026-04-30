@@ -23,6 +23,7 @@ files:
   - src/main/**/*
   - src/renderer/**/*
   - src/locales/**/*
+  - nodes/**/*
   - dist/**/*
   - package.json
   - "!node_modules/**/test/**"
@@ -104,6 +105,21 @@ fileAssociations:
   - ext: json
     name: JSON File
     description: JSON Document
+  - ext: or-pipeline
+    name: OrPAD Pipeline
+    description: OrPAD Pipeline
+  - ext: or-graph
+    name: OrPAD Graph
+    description: OrPAD Graph
+  - ext: or-tree
+    name: OrPAD Tree
+    description: OrPAD Tree
+  - ext: or-rule
+    name: OrPAD Rule
+    description: OrPAD Rule
+  - ext: or-run
+    name: OrPAD Run
+    description: OrPAD Run Record
   - ext: yaml
     name: YAML File
     description: YAML Document
